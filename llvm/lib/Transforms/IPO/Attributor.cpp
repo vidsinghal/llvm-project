@@ -482,7 +482,8 @@ static bool getPotentialCopiesOfMemoryValue(
     // If the value has been written to we don't need the initial value of the
     // object.
     bool HasBeenWrittenTo = false;
-
+    
+    LLVM_DEBUG(dbgs() << "Reached here" << "!\n");
     AA::RangeTy Range;
     auto *PI = A.getAAFor<AAPointerInfo>(QueryingAA, IRPosition::value(Obj),
                                          DepClassTy::NONE);
@@ -550,6 +551,7 @@ bool AA::getPotentiallyLoadedValues(
     SmallSetVector<Instruction *, 4> &PotentialValueOrigins,
     const AbstractAttribute &QueryingAA, bool &UsedAssumedInformation,
     bool OnlyExact) {
+  LLVM_DEBUG(dbgs() << "getPotentiallyLoadedValues" << "!\n");
   return getPotentialCopiesOfMemoryValue</* IsLoad */ true>(
       A, LI, PotentialValues, PotentialValueOrigins, QueryingAA,
       UsedAssumedInformation, OnlyExact);
@@ -560,6 +562,7 @@ bool AA::getPotentialCopiesOfStoredValue(
     const AbstractAttribute &QueryingAA, bool &UsedAssumedInformation,
     bool OnlyExact) {
   SmallSetVector<Instruction *, 4> PotentialValueOrigins;
+  LLVM_DEBUG(dbgs() << "getPotentialCopiesOfStoredValue" << "!\n");
   return getPotentialCopiesOfMemoryValue</* IsLoad */ false>(
       A, SI, PotentialCopies, PotentialValueOrigins, QueryingAA,
       UsedAssumedInformation, OnlyExact);

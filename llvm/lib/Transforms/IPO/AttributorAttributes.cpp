@@ -11392,6 +11392,9 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
       if (handleCmp(A, *CI, CI->getOperand(0), CI->getOperand(1),
                     CI->getPredicate(), II, Worklist))
         return true;
+    
+    LLVM_DEBUG(dbgs() << "The instruction encountered was: " << I << "!\n");
+    LLVM_DEBUG(dbgs() << "The instruction Opcode was: " << I.getOpcode()  << "!\n");
 
     switch (I.getOpcode()) {
     case Instruction::Select:
@@ -11420,6 +11423,7 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
       Value *V = II.I.getValue();
       assert(V);
       const Instruction *CtxI = II.I.getCtxI();
+
       AA::ValueScope S = II.S;
 
       // Check if we should process the current value. To prevent endless
