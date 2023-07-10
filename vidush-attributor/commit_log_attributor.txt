@@ -1,0 +1,865 @@
+f086f383d882 [Attributor][NFCI] Move attribute collection and manifest to Attributor
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+77dbd1d71272 [Attributor][NFCI] Manifest assumption attributes explicitly
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d6fa3b374fe0 [Attributor] Remove now obsolete initialization code
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+1221526681b7 [Attributor][FIX] Check AA preconditions
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+d33bca840a82 [Attributor] Introduce helpers to judge AAs prior to creation
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+d7d4aa539c0d AMDGPU: Move AMDGPUAttributor run earlier
+M	llvm/lib/Target/AMDGPU/AMDGPUTargetMachine.cpp
+339a1f3ce360 [Attributor] Avoid more AAs through IR implication
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+7d16a35c83d2 [Attributor][FIX] Do not ignore refinement for IPO
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+badafc53c605 [Attributor] Check IR attributes before creating new AAs
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+23dafbb1e5de [Attributor] Remove the iteration count verification
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b9c6d9e6c3b9 AMDGPU: Propagate amdgpu-waves-per-eu with attributor
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+0b9289299a9a Update CODE_OWNERS.TXT
+M	llvm/CODE_OWNERS.TXT
+846a360e1698 AMDGPU: Don't run AMDGPUAttributor with -O0
+A	llvm/test/CodeGen/AMDGPU/attributor-noopt.ll
+A	llvm/test/CodeGen/AMDGPU/codegen-internal-only-func.ll
+M	llvm/test/CodeGen/AMDGPU/llc-pipeline.ll
+cb17c48fdd8c [Attributor] Identify and remove no-op fences
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+dbbe9b37765c [Attributor] Create `AAMustProgress` for the `mustprogress` attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d4ecd1241ccd Revert "[OpenMP] Introduce kernel environment"
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+35cfadfbe2de [OpenMP] Introduce kernel environment
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+e0ea44720d9b [Attributor] Set up a dedicated simplification call back map for `GlobalVariable`
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+99d4c722e308 AMDGPU: Really invert handling of enqueued block detection
+M	llvm/lib/Target/AMDGPU/AMDGPUOpenCLEnqueuedBlockLowering.cpp
+aead502b111f [Attributor] Add convergent abstract attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+6705f634f645 Attributor: Start looking at uses when inferring nofpclass
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+94026ce56df2 Attributor: Start inferring nofpclass
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d623b2f95fd5 [PassManagerBuilder] Remove PassManagerBuilder
+D	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+773d663e4729 [IPO] Remove various legacy passes
+M	llvm/include/llvm/InitializePasses.h
+M	llvm/include/llvm/LinkAllPasses.h
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/IPO.cpp
+86cce90e21c5 [Attributor][NFCI] Avoid AAIntraFnReachability updates if possible
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+5238df7ed594 [Attributor] Allow (inter-procedural) "CFG" reasoning for aligned regions
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+43c1c59f7388 [OpenMP] Merge barrier elimination into AAExecutionDomain
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+4d4894ab92ee Partially reapply "AMDGPU: Invert handling of enqueued block detection"
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+M	llvm/lib/Target/AMDGPU/AMDGPUOpenCLEnqueuedBlockLowering.cpp
+cefa5cefdce2 [OpenMP] Replace ExternalizationRAII with virtual uses
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+2d9f44512e5c [Attributor] Make AAIsDeadFunction lazy
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d7be8227a84f [Attributor][FIX] Improve care when dealing with liveness
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+b2a8d2c69bce [OpenMP] Avoid running openmp-opt on dead functions
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+31ad4dbcb91c Reapply "[Attributor] Introduce AA[Intra/Inter]Reachability"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+1b9ba5856add [Attributor] Allow cfg reasoning for thread-local objects
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+acd22b275131 [AAUnderlyingObjects] Introduce an AA for getting underlying objects of a pointer
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+270e96f43559 Revert "AMDGPU: Invert handling of enqueued block detection"
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+47288cc977fa AMDGPU: Invert handling of enqueued block detection
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+e467a4294382 [Attributor] potential constant values for PHI and Load
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+bb4c6e7a0643 [OpenMP] Remove folding logic for removed runtime function
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+9c1b82599dac [AAPointerInfo] handle multiple offsets in PHI
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+e425a4c45618 Revert "[Attributor] Introduce AA[Intra/Inter]Reachability"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+525d6c54b5d9 Revert "[AAPointerInfo] handle multiple offsets in PHI"
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+7928a6387f4d Revert "Revert "[AAPointerInfo] handle multiple offsets in PHI""
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+8b446ea2ba39 Revert "[AAPointerInfo] handle multiple offsets in PHI"
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+179ed8871101 [AAPointerInfo] handle multiple offsets in PHI
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+12696d302d14 Revert "[AAPointerInfo] handle multiple offsets in PHI"
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+88db516af696 [AAPointerInfo] handle multiple offsets in PHI
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+fc21f2d7bae2 [Attributor] Introduce AA[Intra/Inter]Reachability
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+6a2305484e87 [AAPointerInfo] track multiple constant offsets for each use
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+2fdeb2779006 Revert "[AAPointerInfo] track multiple constant offsets for each use"
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+c2a0baad1fbb [AAPointerInfo] track multiple constant offsets for each use
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+0dc0a441323d [AAPointerInfo] rearrange code in preparation for further changes
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+2c2c9688f017 [OpenMP][LegacyPM] Remove OpenMPOptCGSCCLegacyPass
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+7114bffa6837 [IPO] Remove an unused function declaration
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+376d0469b917 [AAPointerInfo] refactor how offsets and Access objects are tracked
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+cbcf123af293 [LegacyPM] Remove cl::opts controlling optimization pass manager passes
+M	llvm/lib/Passes/PassBuilderPipelines.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+d7c142795318 Revert "[LegacyPM] Remove cl::opts controlling optimization pass manager passes"
+M	llvm/lib/Passes/PassBuilderPipelines.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+7ec05fec7115 [LegacyPM] Remove cl::opts controlling optimization pass manager passes
+M	llvm/lib/Passes/PassBuilderPipelines.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+304f1d59ca41 [IR] Switch everything to use memory attribute
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+00b09a7b18ab Revert "[AAPointerInfo] refactor how offsets and Access objects are tracked"
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+cccbd2a2b2c3 Revert "[Attributor][NFCI] Move MemIntrinsic handling into the initializer"
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+7fdf3564c040 [Attributor][NFCI] Move MemIntrinsic handling into the initializer
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+b756096b0cbe [AAPointerInfo] refactor how offsets and Access objects are tracked
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+21711039e3ab [OpenMP] Allow the Attributor to look at functions we also internalized
+M	llvm/test/Transforms/OpenMP/remove_globalization.ll
+0b1160fdebf1 Fix OpenMP Opt for target without a parallel region.
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+c72d93a08a22 [Attributor][NFC] Remove unnecessary overwritten methods
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+f84712f0b83f [Attributor] Teach checkForAllUses to follow returns into callers
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+bf789b1957ef [Attributor] Replace AAValueSimplify with AAPotentialValues
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+3a20597776a5 [amdgpu] Implement lds kernel id intrinsic
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+ec9a0e36d9d3 [IPO] Remove addLTOOptimizationPasses and addLateLTOOptimizationPasses (NFC)
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+f6e0c05e3dcb Revert "[Attributor] Replace AAValueSimplify with AAPotentialValues"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+f17639ea0cd3 [Attributor] Replace AAValueSimplify with AAPotentialValues
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+8958057fb100 [ArgPromotion] Move isDenselyPacked static member (NFC)
+M	llvm/include/llvm/Transforms/IPO/ArgumentPromotion.h
+170c4d21bd94 [ArgPromotion] Unify byval promotion with non-byval
+M	llvm/include/llvm/Transforms/IPO/ArgumentPromotion.h
+5011b4ca0e4b Revert "[Attributor] Ensure to use the proper liveness AA"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+083010312aa4 [Attributor] Ensure to use the proper liveness AA
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+6555558a8058 Revert "[Attributor] Replace AAValueSimplify with AAPotentialValues"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+da50dab1ae11 [Attributor] Replace AAValueSimplify with AAPotentialValues
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+81143b69dd83 [Attributor][FIX] Use AttributorConfig in the unit tests too
+M	llvm/unittests/Transforms/IPO/AttributorTest.cpp
+3be3b401888a [Attributor][NFCI] Introduce AttributorConfig to bundle all options
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+8edaf25986a4 AMDGPU: Emit metadata for the hidden_multigrid_sync_arg conditionally
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+af30de7788e1 [Attributor] Introduce AAInstanceInfo
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+857bf306d798 [Attributor] Remove broken and duplicated load simplification
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+79962df3866a [Attributor] Allow to reproduce instructions for simplification
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+88c3c346f680 Add another office hour
+M	llvm/docs/GettingInvolved.rst
+85daf6973d2b [Attributor] Remove capture tracker usage and follow uses explicitly
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+f3ad8cf00e21 [Attributor] Cleanup manifest and liveness for CGSCC passes
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+e8fadafe774c [Attributor][NFCI] Make AAPointerInfo deterministic
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+0f20a35b9e4b AMDGPU: Set up User SGPRs for queue_ptr only when necessary
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+5af11ec34b7b [Attributor] Determine potentially loaded values through memory
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+192a34ddb05c [Attributor][OpenMPOpt][FIX] Register simplification callbacks
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+efedf70aa5cd [Attributor][NFC] Expose helper with more generic interface
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+4ab5d7608b20 [clang-format] NFC update LLVM overall clang-formatted status
+M	clang/docs/tools/clang-formatted-files.txt
+ca62b1db9fc9 [AMDGPU][NFC]: Emit metadata for hidden_heap_v1 kernarg
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+d8f99bb6e064 [AMDGPU] replace hostcall module flag with function attribute
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+02a2e46ff05b [AMDGPU] [NFC] refactor the AMDGPU attributor
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+a265cf22af5e [Attributor] Introduce the `AA::isPotentiallyReachable` helper APIs
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+b51b83f68e46 [Attributor] Introduce the concept of query AAs
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b2d1ae061153 [Attributor] AAFunctionReachability, Instruction reachability.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+ac3ec22df906 [Attributor] Use AAFunctionReachability to determine AANoRecurse
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+a1db0e523d5a [Attributor][FIX] Liveness handling in the isAssumedDead helpers
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+adf0d57f1561 [Attributor] Provide convenient helpers for isAssumedRead{None,Only}
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e140d5131928 [Attributor] Use CFG reasoning to filter potentially interfering writes
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+191fa419a64e [Attributor][NFC] Make debug output more useful and concise
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3f0e670498cb [Attributor][NFCI] Expose some nosync reasoning to outside users.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+6e2fcf8513a3 [Attributor][FIX] Ensure store uses are correlated with reloads
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3c8666ef9a21 [clang-format] NFC update LLVM overall clang-formatted status
+M	clang/docs/tools/clang-formatted-files.txt
+b8a825b4838f [Attributor] Introduce AAAssumptionInfo to propagate assumptions
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+e2024d72fae7 Revert "[NFC] Remove LinkAll*.h"
+A	llvm/include/llvm/LinkAllPasses.h
+fe364e5dc78c [NFC] Remove LinkAll*.h
+D	llvm/include/llvm/LinkAllPasses.h
+734f91441d53 [Attributor][NFC] Improve debug messages
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ec57b3755111 AMDGPU: Use attributor to propagate amdgpu-flat-work-group-size
+M	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+f074a6a04193 [OpenMP] Add options to change Attributor max iterations in OpenMPOpt
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/test/Transforms/OpenMP/remove_globalization.ll
+5aca8bb963a4 [clang-format] allow clang-format to be passed a file of filenames so we can add a regression suite of "clean clang-formatted files" from LLVM
+A	clang/docs/tools/clang-formatted-files.txt
+c3ddc13d7d63 [NFC] Split up PassBuilder.cpp
+M	llvm/lib/Passes/PassBuilder.cpp
+A	llvm/lib/Passes/PassBuilderPipelines.cpp
+66a0b3464ca8 [Attributor] AAFunctionReachability, Handle CallBase Reachability.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+2cc6f7c8e108 [Attributor] Create a call site position for AACalledges
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+722b8e0e5a04 AMDGPU: Invert ABI attribute handling
+M	llvm/lib/Target/AMDGPU/AMDGPUTargetMachine.cpp
+M	llvm/test/CodeGen/AMDGPU/llc-pipeline.ll
+29a3e3dd7bed [OpenMPOpt] Expand SPMDization with guarding for target parallel regions
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+adbaa39dfce7 [Attributor] Change function internalization to not replace uses in internalized callers
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+5ab6aedda9d9 [OpenMP] Folding threadLimit and numThreads when single value in kernels
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+3dca83961c9a Reapply "[Attributor] Disable simplification AAs if a callback is present""
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+aa27430a625b Revert "[Attributor] Disable simplification AAs if a callback is present"
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+cbb709e25124 [Attributor] Disable simplification AAs if a callback is present
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d4bfce552110 [Attributor] Utilize the InstSimplify interface to simplify instructions
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+cdb4cfe8b3ce [Attributor][FIX] Update AMDGPU attributor test
+M	llvm/test/CodeGen/AMDGPU/annotate-kernel-features-hsa-call.ll
+41bd26dff986 [Attributor] Delete dead stores
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+adddd3dbdae0 [Attributor] Introduce getPotentialCopiesOfStoredValue and use it
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e97e0a4fad09 [AbstractAttributor] Fold __kmpc_parallel_level if possible
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+58725c12bb27 [OpenMP] Introduce RAII to protect certain RTL calls from DCE
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+698fef3eb68b [gn build] Port 96709823ec37
+M	llvm/utils/gn/secondary/llvm/lib/Target/AMDGPU/BUILD.gn
+96709823ec37 [AMDGPU] Deduce attributes with the Attributor
+M	llvm/lib/Target/AMDGPU/AMDGPU.h
+A	llvm/lib/Target/AMDGPU/AMDGPUAttributor.cpp
+M	llvm/lib/Target/AMDGPU/AMDGPUTargetMachine.cpp
+M	llvm/lib/Target/AMDGPU/CMakeLists.txt
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/test/CodeGen/AMDGPU/pal-simple-indirect-call.ll
+M	llvm/test/CodeGen/AMDGPU/uniform-work-group-nested-function-calls.ll
+f8c40ed8f8e7 [OpenMP] Use AAHeapToStack/AAHeapToShared analysis in SPMDization
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+94d3b59c563c [Attributor][FIX] Do not introduce multiple instances of SSA values
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+196fe994b8cc [OpenMP] Fold `__kmpc_is_generic_main_thread_id` if possible
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+e8439ec893b8 [OpenMP] Set RequiresFullRuntime false in SPMDization
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+5eba7846a5cb [Attributor] Use checkForAllUses instead of custom use tracking
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+9c00aabd6090 [Attributor][NFCI] Expose `getAssumedUnderlyingObjects` API
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+c2281f15659a [Attributor] Introduce AAPointerInfo
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+28c78a9e126d [Attributor] Simplify loads
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+ca662297d5fb [AbstractAttributor] Fold function calls to `__kmpc_is_spmd_exec_mode` if possible
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+a70ef3f568cb Revert "[AbstractAttributor] Fold function calls to `__kmpc_is_spmd_exec_mode` if possible"
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+1100e4aafea2 [AbstractAttributor] Fold function calls to `__kmpc_is_spmd_exec_mode` if possible
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+514c033db1e0 [OpenMP] Detect SPMD compatible kernels and execute them as such
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+d9659bf6a036 [OpenMP] Create custom state machines for generic target regions
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+4761d29633ac [Attributor][FIX] Sanitize queries to LVI and ScalarEvolution
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+c1c1fe93852e [Attributor] Reorganize AAHeapToStack
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+dbb3a65f5b30 [Attributor][FIX] Do not replace a value with a non-dominating instruction
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+5ef18e242183 [Attributor] Use AAValueSimplify to simplify returned values
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+0aab13aaf942 [Attributor] Introduce an optimistic getUnderlyingObjects helper
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+5b12cf3e659b [Attributor][FIX] Traverse uses even if a value is assumed constant
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+d3e749133319 Revert Attributor patch series
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+d39179d7fa17 [OpenMP] Detect SPMD compatible kernels and execute them as such
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+966342790e8d [Attributor][FIX] Sanitize queries to LVI and ScalarEvolution
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+ae08df87dfba [Attributor][FIX] Do not replace a value with a non-dominating instruction
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+f0628c6ff7ba [OpenMP] Create custom state machines for generic target regions
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+1eb31d6de36b [Attributor] Reorganize AAHeapToStack
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+374e573cfc2b [Attributor] Use AAValueSimplify to simplify returned values
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+93a279a67dc0 [Attributor] Introduce an optimistic getUnderlyingObjects helper
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+be5d46e9bbc9 [Attributor][FIX] Traverse uses even if a value is assumed constant
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5d44d56f7deb [Attributor] Derive AAFunctionReachability attribute.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/unittests/Transforms/IPO/AttributorTest.cpp
+30e36c9b3c6a [Attributor] Add interface to emit remarks in Attributor
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+03d7e61c87eb [OpenMP] Internalize functions in OpenMPOpt to improve IPO passes
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+6fc51c9f7d66 [OpenMP] Replace GPU globalization calls with shared memory in the middle-end
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+7670938bbad8 [Attributor] Don't print the call-graph in a hard-coded file.
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/test/Transforms/Attributor/callgraph.ll
+666dc6f1267d [Attributor] Use a centralized value simplification interface
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+9a23e673caeb [OpenMP][NFC] Expose AAExecutionDomain and rename its getter
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+8d7bace3b517 [Attributor][NFC] AAReachability is currently stateless, don't invalidate it
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+a78671ef54e5 [FIX][Attributor] Fix broken build due to missing virtual deconstructors.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+eaf1b6810ce0 [Attributor] Derive AACallEdges attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+A	llvm/test/Transforms/Attributor/callgraph.ll
+55e9c282129e [Attributor] Teach AAIsDead about undef values
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+1ba2929bb82b [Attributor] Be more careful to not disturb the CG outside the SCC
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+2bc51d39db7a [Attributor][NFC] Add helpful debug outputs
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+182831258bfe [Attributor] Add AAExecutionDomainInfo interface to OpenMPOpt
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+b2ad63d3cf6c [OpenMP] Add OpenMPOpt as a Module pass
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+35393c865c2c [funcattrs] Infer nosync from instruction walk
+M	llvm/lib/Transforms/IPO/FunctionAttrs.cpp
+ff256c1376fe [Attributor] Derive `willreturn` based on `mustprogress`
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d75c9e61a5a3 [Attributor] Attributor call site specific AAValueConstantRange
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/unittests/Transforms/IPO/AttributorTest.cpp
+09c3eebf5fd6 [Attributor] Use sensible initialization in AANoCaptureCallSiteReturned
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+c70737ba1dea Recommit "[LTO] Use lto::backend for code generation."
+M	llvm/lib/LTO/LTOCodeGenerator.cpp
+7db390cc7738 Revert "[LTO] Use lto::backend for code generation."
+M	llvm/lib/LTO/LTOCodeGenerator.cpp
+6a59f0560648 [LTO] Use lto::backend for code generation.
+M	llvm/lib/LTO/LTOCodeGenerator.cpp
+227c8ff189c3 [OpenMP][Docs] Add more content, call coordinates, FAQ entries, links
+M	openmp/docs/optimizations/OpenMPUnawareOptimizations.rst
+1c2531c9e164 [Attributor][FIX] Delete all unreachable static functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+bfe05b1aff1b [Attributor][FIX] Do not attach range metadata to the wrong Instruction
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+ce16be253c4d [Attributor][NFC] Make `createShallowWrapper()` available outside of Attributor
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3f540c05dfe9 [Attributor] Give up early on AANoReturn::initialize
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+957094e31b05 [Attributor][NFC] Ignore benign uses in AAMemoryBehaviorFloating
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d445b6dfec13 [Attributor] Cleanup `::initialize` of various AAs
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+5dfd7cc46c8d Reland [OpenMPOpt] ICV tracking for calls
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+50ebd1afa9d7 [Attributor] Do not manifest noundef for dead positions
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+58d257b2904b [Attributor] Do not add AA to dependency graph after the update stage
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+c5e6872ec6e5 [Attributor] Guarantee getAAFor not to update AA in the manifestation stage
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+7a68f0f1e00b [Attributor] Add a phase flag to Attributor
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3edea15f9ad3 [Attributor] Simplify comparison against constant null pointer
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+08f33756e6e1 [Attributor][NFC] Extract functionality into own member
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+1de70a724e01 Revert "[OpenMPOpt] ICV tracking for calls"
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+b0b32e649011 [OpenMPOpt] ICV tracking for calls
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+5e361e2aa4f6 [Attributor] Deduce noundef attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+87a85f3d57f5 [Attributor] Use internalized version of non-exact functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5f55a8193c2c [Attributor] Implement AAPotentialValues
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+06eee8748fb4 [Attributor][NFC] Connect AAPotentialValues with AAValueSimplify
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+c575ba28de2f [Attributor] AAPotentialValues Interface
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+376b64926b70 Revert "[Attributor] AAPotentialValues Interface"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+d3f01b6681bf [Attributor] AAPotentialValues Interface
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+49def10e02e3 [Attributor] Add time trace support.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5ee07dc53fca [Attributor] Track AA dependency using dependency graph
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+697c6d8907e7 [Attributor] Cache query results for isPotentiallyReachable in AAReachability
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+6db99d18b6bd Revert "[Attributor] Track AA dependency using dependency graph"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+8df7af560aeb [Attributor] Track AA dependency using dependency graph
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+e21323a1e9d5 Revert "[Attributor] [WIP] Track AA dependency using dependency graph"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+6b78ed60708b [Attributor] [WIP] Track AA dependency using dependency graph
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+670e8372b3a0 [gn build] Port 0750757e80c
+M	llvm/utils/gn/secondary/llvm/unittests/Transforms/IPO/BUILD.gn
+0750757e80c2 [Attributor] Unittest for Attributor
+A	llvm/unittests/Transforms/IPO/AttributorTest.cpp
+A	llvm/unittests/Transforms/IPO/AttributorTestBase.h
+M	llvm/unittests/Transforms/IPO/CMakeLists.txt
+c73f425f84ad [Attributor] Add AAValueSimplifyCallSiteArgument::manifest
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+4dbe82eef34e [Attributor] Introudce attribute seed allow list.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+850b150cff3d [Attributor][NFC] Add more debug output for deleted functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b8235d2bd871  Reland "[OpenMPOpt] ICV Tracking"
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+1d542f0ca83f Revert "[OpenMPOpt] ICV Tracking"
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+6c4a5e9257ba [OpenMPOpt] ICV Tracking
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+0f426935bb5f [OpenMPOpt] ICV macro definitions
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+7cfd267c518a [OpenMPOPT][NFC] Introducing OMPInformationCache.
+M	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+06a744afd3f4 [NFC][Attributor] Expose getOrCreateAAFor and lookupAAFor
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+70330edc4d10 Reland: [Attributor] Split the Attributor::run() into multiple functions.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3013f2d329b7 Revert "[Attributor] Split the Attributor::run() into multiple functions."
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+0ee47cc92f51 [Attributor] Split the Attributor::run() into multiple functions.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e57807769b5c [Attributor] Use AAValueConstantRange to infer dereferencability.
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+5e06b2514aed [Attributor][FIX] Carefully handle/ignore/forget `argmemonly`
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+95e0d28b71e4 [Attributor] Remember only necessary dependences
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+231026a508ea [Attributor] Inititialize "value attributes" w/ must-be-executed-context info
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+46b7ed0e6fdf [Attributor] Remove dependence edges eagerly
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+c5794f77eb4a [Attributor][PM] Introduce `-attributor-enable={none,cgscc,module,all}`
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Passes/PassBuilder.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+40f3baeb20fe [Attributor] Pass the Attributor to the AbstractAttribute constructors
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+898bbc252a72 [Attributor] Lazily collect function information
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+0985554b709f [Attributor][NFC] Split AbstractAttributes out of Attributor.cpp
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+A	llvm/lib/Transforms/IPO/AttributorAttributes.cpp
+M	llvm/lib/Transforms/IPO/CMakeLists.txt
+M	llvm/utils/gn/secondary/llvm/lib/Transforms/IPO/BUILD.gn
+b43b59fcc0e7 Expose `attributor-disable` to the new and old pass managers
+M	llvm/lib/Passes/PassBuilder.cpp
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+M	llvm/test/Other/new-pm-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
+eec6d87626e7 [Attributor] Deduce attributes for non-exact functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ac96c8fd8535 [Attributor][FIX] Do not compute ranges for arguments of declarations
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b1c788d05187 [Attributor][FIX] Prevent alignment breakage wrt. must-tail calls
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+41f2a57d0bc1 [Attributor][NFC] Use a BumpPtrAllocator to allocate `AbstractAttribute`s
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5699d08b79af [Attributor] Use knowledge retained in llvm.assume (operand bundles)
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+54ec9b54f6bb [Attributor] Unify handling of must-tail calls
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b285b333dcd0 [Attributor] Detect possibly unbounded cycles in functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+bdcbdb484829 [Attributor] Deduction based on path exploration
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+876d13378931 [AssumeBundles] Add API to fill a map from operand bundles of an llvm.assume.
+M	llvm/include/llvm/Transforms/Utils/KnowledgeRetention.h
+d95cb56649e8 [Attributor] Make sure abstract attributes are properly initialized
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+8e76fec0ae89 [Attributor][NFC] Improve the debug output & add a TODO
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e1eed6c5b9fa [Attributor] Generalize `getAssumedConstantInt` interface
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+1e99fc9d58d1 [Attributor] Add initial AAIsDead for arguments
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+c9e93c84f614 Add Query API for llvm.assume holding attributes
+M	llvm/include/llvm/Transforms/Utils/KnowledgeRetention.h
+ad121ea14d85 [Attributor] Manifest simplified (return) values properly
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+282f5d7ad163 [Attributor] Derive memory location attributes (argmemonly, ...)
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+23f41f16d415 [Attributor] Use fine-grained liveness in all helpers
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b2c76002caae [Attributor] Ignore uses if a value is simplified
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+86509e8c3b84 [Attributor] Use assumed information to determine side-effects
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+8e62968d4542 [Attributor] Identify dead uses in PHIs (almost) based on dead edges
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+77a9e61c9ac8 [Attributor][NFC] Improve debug message
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ffdbd2a06ca2 [Attributor] Look through (some) casts in AAValueConstantRangeFloating
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b0c77c36d2fb [Attributor] Add an Attributor CGSCC pass and run it
+M	llvm/include/llvm/InitializePasses.h
+M	llvm/include/llvm/LinkAllPasses.h
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/LTO/LTOCodeGenerator.cpp
+M	llvm/lib/Passes/PassBuilder.cpp
+M	llvm/lib/Passes/PassRegistry.def
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/IPO.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
+M	llvm/test/Other/new-pm-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
+M	llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
+9548b74a831e [OpenMP] Introduce the OpenMPOpt transformation pass
+A	llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+89c2e733e80e [Attributor] Pointer privatization attribute (argument promotion)
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ea5fabe60c78 [Attributor] Reuse existing logic to avoid duplication
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+53992c7bf777 [Attributor] Modularize AANoAliasCallSiteArgument to simplify extensions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+02bd8180fc37 [Attributor][NFC] Improve debug messages
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b6dbd0f71fb9 [Attributor][NFC] Internalize helper function
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+2baf000ecc06 [Attributor] `byval` arguments are always `noalias`
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+188f9a348dc5 [Attributor] AAValueConstantRange: Value range analysis using constant range
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5fc02dc0a7b6 Revert "[Attributor] AAValueConstantRange: Value range analysis using constant range"
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e9963034314e [Attributor] AAValueConstantRange: Value range analysis using constant range
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+751336340dab [Attributor] Function signature rewrite infrastructure
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+dada8132af65 [Attributor] Propagate known align from arguments to call sites arguments
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b1b441d22de8 [Attributor] Use abstract call sites to determine associated arguments
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ef4febd85b54 [Attributor] AAUndefinedBehavior: Check for branches on undef value.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+58f324a468ff [Attributor] Function level undefined behavior attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3d347e28355a [Attributor][NFC] Simplify debug printing for abstract attributes
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+6abd01e4624a [Attributor][FIX] Do treat byval arguments special
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+6c742fdbf48e [Attributor] Deduce dereferenceable based on accessed bytes map
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+dfedae50018f [Attributor] Remove dereferenceable_or_null when nonull is present
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+04945c92ce00     [WIP][Attributor] AAReachability Attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+88b04ef8327c [Attributor] Use must-be-executed-context in align deduction
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+680f6380278a [Attributor][NFCI] Distinguish optional and required dependences
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+f35740d6e954 NoFree argument attribute.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5fb178291840 Revert "NoFree argument attribute."
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+c12efa2ed054 NoFree argument attribute.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+15cd90a2c44a [Attributor][FIX] Make value simplification aware of "complicated" attributes
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+0c7d4d7f3e26 [Attributor][NFCI] Remove obsolete code
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+eb4f41dfe58f [Attributor] Really use the executed-context
+M	llvm/test/Transforms/InferFunctionAttrs/dereferenceable.ll
+2d6d651e8cb6 [Attributor] Make AANonNull perform context sensitive queries
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+dac2d403a2de [Attributor] Make liveness "edge-based"
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+cd4aab4a8ac4 [Attributor] Liveness for values
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+12173e60ec43 [Attributor][NFC] Do not record dependences on fixed attributes
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+8ee410c75ec4 [Attributor][MemBehavior] Fallback to the function state for arguments
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e9d3f708220a [Attributor] Remove unused verification flag
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3753aa75d2f2 [Attributor][NFC] Expose call site traversal without QueryingAA
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+72adda1740ca [Attributor] Handle `null` differently in capture and alias logic
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+96e6ce4cd361 [Attributor][MustExec] Deduce dereferenceable and nonnull attribute using MustBeExecutedContextExplorer
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/test/Transforms/InferFunctionAttrs/dereferenceable.ll
+08daf8cf0a55 [Attributor] Add helper class to compose two structured deduction.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+748538e166ef [Attributor][NFC] Add debug output
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+661db04b98c9 [Attributor] Use abstract call sites for call site callback
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+1097fab1cf41 [Attributor] Deduce memory behavior of functions and arguments
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+63f6066b53d5 [Attributor] Implement "norecurse" function attribute deduction
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3ab9e8b81858 [Attributor][Fix] Initialize the cache prior to using it
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+30d86f1858db [Attributor] Use Alias Analysis in noalias callsite argument deduction
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+431141c5cc34 [Attributor] Heap-To-Stack Conversion
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+1d68ed8c24e3 [Attributor] Implement "noalias" callsite argument deduction
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+f2b9dc4758e6 [Attributor] ValueSimplify Abstract Attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+2f6220633c71 [Attributor] Look at internal functions only on-demand
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+97fd582b9158 [Attributor] Use the white list for attributes consistently
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b0412e437c3f [Attributor] Deal more explicit with non-exact definitions
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+7516a5e04568 [Attributor] Deduce "no-capture" argument attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+3fac668d837a [Attributor] Use existing function information for the call site
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+cbab334e403b [Attributor] Deduce "noalias" attribute
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+f7ca0fe1c86a [Attributor] Regularly clear dependences to remove spurious ones
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+07a5c129c6d7 [Attributor] Restrict liveness and return information to functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+39681e733cd0 [Attributor] Introduce an API to delete stuff
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b504eb8bb5ed [Attributor] Adjust and test the iteration bound of tests
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+19b004364173 [Attributor] Allow explicit dependence tracking
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+5a5a13991759 [Attributor] Manifest alignment in load and store instructions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+26121ae4d047 [Attributor] Liveness for internal functions.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+12cbbab9d936 [Attributor] Create abstract attributes on-demand
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+cfcca1a5b12d [Attributor] Use structured deduction for AADereferenceable
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+b9b8791fedea [Attributor] Use structured deduction for AANonNull
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+6dedc78d9ddd [Attributor] Add all missing attribute definitions/symbols
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+234eda563df3 [Attributor] Towards a more structured deduction pattern
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+fe6dbadc0d53 [Attributor] Introduce initialize calls and move code to keep attributes concise
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+def9928204e7 [Attributor] Use liveness during the creation of AAReturnedValues
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+9a1a1f96d9cd [Attributor] Do not update or manifest dead attributes
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+710ebb03ed52 [Attributor] Use IRPosition consistently
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+ece819049772 [Attributor] Make the InformationCache an Attributor member
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+d62078187224 [Attributor][NFC] Avoid unnecessary liveness queries
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+14a0493a88e8 [Attributor] Provide easier checkForallReturnedValues functionality
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+aaa5270c5362 [Attributor] Introduce checkForAllReadWriteInstructions(...).
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+26e60f065318 [Attributor][modulemap] Revert r368064 but fix the build
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/include/llvm/module.modulemap
+3a4d5ed232dc [modulemap] exclude a non-module friendly header
+M	llvm/include/llvm/module.modulemap
+21fe0a314e93 [Attributor][NFC] Outline common pattern into helper method
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+d0f640097834 [Attributor] Provide a generic interface to check live instructions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+eccdf085774c [Attributor] Introduce the IRAttribute helper struct
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+240206255711 [Attributor] Use proper ID for attribute lookup
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e83f303938a5 [Attributor] Deduce the "no-return" attribute for functions
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+e7bea9b73a58 [Attributor] Deduce "align" attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+19c07afe17fc [Attributor] Deduce "dereferenceable" attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+6058b8637399 Fixing build error from commit 95cbc3d
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5a9ba27c719b Revert "Fixing build error from commit 9285295."
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+95cbc3da8871 Fixing build error from commit 9285295.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+77dc6d2479a3 Temporarily Revert "[Attributor] Liveness analysis." as it's breaking the build.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+9285295f75a2 [Attributor] Liveness analysis.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+69ebb02001f5 [Attributor] NoAlias on return values.
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+11d3710c1cd2 [Attributor] Deduce "willreturn" function attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+54869ec907f3 [Attributor] Deduce "nonnull" attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+65bbaf9ece26 [Attributor] Deduce "nofree" function attribute
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+0626367202ce [Attributor] Deduce "nosync" function attribute.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+accd3e87478e [Attributor] Deduce the "returned" argument attribute
+M	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+5360589b7d05 [Attributor] Deducing existing nounwind attribute.
+M	llvm/lib/Transforms/IPO/Attributor.cpp
+2121a4f7335a gn build: Merge r362578
+M	llvm/utils/gn/secondary/llvm/lib/Transforms/IPO/BUILD.gn
+aade782a98e0 [Attributor] Pass infrastructure and fixpoint framework
+M	llvm/include/llvm/InitializePasses.h
+M	llvm/include/llvm/LinkAllPasses.h
+A	llvm/include/llvm/Transforms/IPO/Attributor.h
+M	llvm/lib/LTO/LTOCodeGenerator.cpp
+M	llvm/lib/Passes/PassBuilder.cpp
+M	llvm/lib/Passes/PassRegistry.def
+A	llvm/lib/Transforms/IPO/Attributor.cpp
+M	llvm/lib/Transforms/IPO/CMakeLists.txt
+M	llvm/lib/Transforms/IPO/IPO.cpp
+M	llvm/lib/Transforms/IPO/PassManagerBuilder.cpp
