@@ -255,8 +255,8 @@ define i32 @nc1_addrspace(ptr %q, ptr addrspace(1) %p, i1 %b) {
 ; TUNIT-NEXT:    [[X:%.*]] = phi ptr addrspace(1) [ [[P]], [[E:%.*]] ]
 ; TUNIT-NEXT:    [[Y:%.*]] = phi ptr [ [[Q]], [[E]] ]
 ; TUNIT-NEXT:    [[TMP:%.*]] = addrspacecast ptr addrspace(1) [[P]] to ptr
-; TUNIT-NEXT:    [[TRUETMP2:%.*]] = select i1 [[B]], ptr [[TMP]], ptr [[Q]]
-; TUNIT-NEXT:    [[VAL:%.*]] = load i32, ptr [[TRUETMP2]], align 4
+; TUNIT-NEXT:    [[TMP2:%.*]] = select i1 [[B]], ptr [[TMP]], ptr [[Q]]
+; TUNIT-NEXT:    [[VAL:%.*]] = load i32, ptr [[TMP2]], align 4
 ; TUNIT-NEXT:    store i32 0, ptr addrspace(1) [[P]], align 4
 ; TUNIT-NEXT:    store ptr [[Q]], ptr @g, align 8
 ; TUNIT-NEXT:    ret i32 [[VAL]]
@@ -270,8 +270,8 @@ define i32 @nc1_addrspace(ptr %q, ptr addrspace(1) %p, i1 %b) {
 ; CGSCC-NEXT:    [[X:%.*]] = phi ptr addrspace(1) [ [[P]], [[E:%.*]] ]
 ; CGSCC-NEXT:    [[Y:%.*]] = phi ptr [ [[Q]], [[E]] ]
 ; CGSCC-NEXT:    [[TMP:%.*]] = addrspacecast ptr addrspace(1) [[P]] to ptr
-; CGSCC-NEXT:    [[TRUETMP2:%.*]] = select i1 [[B]], ptr [[TMP]], ptr [[Q]]
-; CGSCC-NEXT:    [[VAL:%.*]] = load i32, ptr [[TRUETMP2]], align 4
+; CGSCC-NEXT:    [[TMP2:%.*]] = select i1 [[B]], ptr [[TMP]], ptr [[Q]]
+; CGSCC-NEXT:    [[VAL:%.*]] = load i32, ptr [[TMP2]], align 4
 ; CGSCC-NEXT:    store i32 0, ptr addrspace(1) [[P]], align 4
 ; CGSCC-NEXT:    store ptr [[Q]], ptr @g, align 8
 ; CGSCC-NEXT:    ret i32 [[VAL]]
