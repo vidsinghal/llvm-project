@@ -6,32 +6,73 @@ target triple = "x86_64-unknown-linux-gnu"
 %struct.Foo = type { i32, i32, i8 }
 
 @.str = private unnamed_addr constant [15 x i8] c"field a is %d\0A\00", align 1
+@.str.1 = private unnamed_addr constant [15 x i8] c"val is now %d\0A\00", align 1
+@.str.2 = private unnamed_addr constant [27 x i8] c"field a is now %d in main\0A\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local void @foo() #0 {
+define dso_local ptr @foo(ptr noundef %val) #0 {
 entry:
+  %val.addr = alloca ptr, align 8
   %f = alloca %struct.Foo, align 4
+  store ptr %val, ptr %val.addr, align 8
+  %0 = load ptr, ptr %val.addr, align 8
+  %1 = load i32, ptr %0, align 4
+  %mul = mul nsw i32 2, %1
   %a = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0
-  store i32 10, ptr %a, align 4
-  %a1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0
-  %0 = load i32, ptr %a1, align 4
-  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %0)
-  ret void
+  store i32 %mul, ptr %a, align 4
+  %2 = load ptr, ptr %val.addr, align 8
+  %3 = load i32, ptr %2, align 4
+  %mul1 = mul nsw i32 %3, 10
+  %4 = load ptr, ptr %val.addr, align 8
+  store i32 %mul1, ptr %4, align 4
+  %a2 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0
+  %5 = load i32, ptr %a2, align 4
+  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %5)
+  ret ptr %f
 }
 
 declare i32 @printf(ptr noundef, ...) #1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local i32 @main() #0 {
+define dso_local i32 @main(i32 noundef %argc, ptr noundef %argv) #0 {
 entry:
   %retval = alloca i32, align 4
+  %argc.addr = alloca i32, align 4
+  %argv.addr = alloca ptr, align 8
+  %val = alloca i32, align 4
+  %f = alloca ptr, align 8
   store i32 0, ptr %retval, align 4
-  call void @foo()
+  store i32 %argc, ptr %argc.addr, align 4
+  store ptr %argv, ptr %argv.addr, align 8
+  %0 = load ptr, ptr %argv.addr, align 8
+  %arrayidx = getelementptr inbounds ptr, ptr %0, i64 1
+  %1 = load ptr, ptr %arrayidx, align 8
+  %call = call i32 @atoi(ptr noundef %1) #3
+  store i32 %call, ptr %val, align 4
+  %call1 = call ptr @foo(ptr noundef %val)
+  store ptr %call1, ptr %f, align 8
+  %2 = load i32, ptr %val, align 4
+  %3 = load ptr, ptr %f, align 8
+  %a = getelementptr inbounds %struct.Foo, ptr %3, i32 0, i32 0
+  %4 = load i32, ptr %a, align 4
+  %add = add nsw i32 %4, %2
+  store i32 %add, ptr %a, align 4
+  %5 = load i32, ptr %val, align 4
+  %call2 = call i32 (ptr, ...) @printf(ptr noundef @.str.1, i32 noundef %5)
+  %6 = load ptr, ptr %f, align 8
+  %a3 = getelementptr inbounds %struct.Foo, ptr %6, i32 0, i32 0
+  %7 = load i32, ptr %a3, align 4
+  %call4 = call i32 (ptr, ...) @printf(ptr noundef @.str.2, i32 noundef %7)
   ret i32 0
 }
 
+; Function Attrs: nounwind willreturn memory(read)
+declare i32 @atoi(ptr noundef) #2
+
 attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { nounwind willreturn memory(read) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #3 = { nounwind willreturn memory(read) }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}

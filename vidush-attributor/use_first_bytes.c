@@ -1,29 +1,35 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct Foo{
-    int a; 
-    int b; 
+    int  a; 
+    int  b; 
     char c; 
 }Foo;
 
-
-void foo(){
-    
-    //Foo* f = (Foo*) malloc(sizeof(Foo));
+Foo* foo(int* val){
     Foo f;
-    f.a = 10; 
+    f.a = 2 * (*val);
+    *val = *val * 10;
     printf("field a is %d\n", f.a);
+    return &f;
     
 } 
 
-
-int main(){
+int main(int argc, char* argv[]){
     
-    foo();
+    int val;
+    val = atoi(argv[1]);
+    Foo* f = foo(&val);
+    
+    f->a += val;
+    
+    printf("val is now %d\n", val);
+    printf("field a is now %d in main\n", f->a);
+    
     return 0;
 }
-
 
 /*
  * ~/workdisk/git/llvm-project/build/bin/clang -Xclang -disable-O0-optnone -disable-llvm-passes -O0 -emit-llvm -S use_first_bytes.c -o use_first_bytes.ll

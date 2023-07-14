@@ -483,7 +483,7 @@ static bool getPotentialCopiesOfMemoryValue(
     // object.
     bool HasBeenWrittenTo = false;
     
-    LLVM_DEBUG(dbgs() << "Reached here" << "!\n");
+    //LLVM_DEBUG(dbgs() << "Reached here" << "!\n");
     AA::RangeTy Range;
     auto *PI = A.getAAFor<AAPointerInfo>(QueryingAA, IRPosition::value(Obj),
                                          DepClassTy::NONE);

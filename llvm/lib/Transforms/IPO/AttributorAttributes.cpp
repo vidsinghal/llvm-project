@@ -68,6 +68,7 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <cassert>
+#include <cstdint>
 #include <numeric>
 #include <optional>
 
@@ -11211,6 +11212,101 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
     return true;
   }
 
+  //Handler for a alloca instruction. 
+  bool handleAllocaInst(Attributor &A, AllocaInst &AI, ItemInfo II, 
+                        SmallVectorImpl<ItemInfo> &Worklist) {
+
+
+        //Call the abstract attribute to get the pointer info. 
+        const IRPosition &IRP = IRPosition::inst(AI);
+        auto *PI = A.getAAFor<AAPointerInfo>(*this, IRP, DepClassTy::OPTIONAL);
+
+        if(!PI){
+          LLVM_DEBUG(
+          dbgs()
+          << "Failed to verify all interfering accesses for Instruction "
+          << AI << "\n");
+          return false;
+        }
+        else{
+
+          LLVM_DEBUG(
+          dbgs()
+          << "Was able to create AAPointer Info object "
+          << *PI << "\n");
+        
+
+        const AAPointerInfo &OtherAA = *PI;
+
+        if (OtherAA.getState().isValidState()){
+          const auto &OtherAAImpl = dyn_cast<const AAPointerInfoImpl &>(*PI);
+          const auto &State = OtherAAImpl.getState();
+          
+          int BinSize = 0; 
+          for(const auto &It : State){BinSize++;}
+          if(BinSize > 1){
+            LLVM_DEBUG(
+              dbgs()
+              << "[handleAllocaInst] Bin Size is greater than one, Alloca not supported yet!"
+              << "\n");
+            return false;
+          }
+        
+          const auto &It = State.begin();
+
+          if (It->getFirst().Offset == 0){
+            LLVM_DEBUG(
+              dbgs()
+              << "[handleAllocaInst] The first offset is the start of the Alloca."
+              << "\n");
+
+             int64_t OffsetEnd = It->getFirst().Offset + It->getFirst().Size;
+             
+             const DataLayout &DL = AI.getModule()->getDataLayout();
+             const auto &AllocationSize = AI.getAllocationSize(DL);
+             if (AllocationSize){
+              
+              if (OffsetEnd < AllocationSize){
+
+                Type* IntOfOffsetEndSize = Type::getIntNTy(AI.getContext(), OffsetEnd * 8);
+                AI.setAllocatedType(IntOfOffsetEndSize);
+              }
+              else {
+                LLVM_DEBUG(
+                  dbgs()
+                  << "[handleAllocaInst] Offset size cannot be reduced in Alloca."
+                  << "\n");
+                return false;
+              }
+
+             }
+             else{
+              LLVM_DEBUG(
+              dbgs()
+              << "[handleAllocaInst] Could not get allocation size from Alloca."
+              << "\n");
+             }
+
+
+          }
+          else{
+            LLVM_DEBUG(
+              dbgs()
+              << "[handleAllocaInst] Offset from start in Alloca not supported yet!"
+              << "\n");
+          }
+
+        }
+        else {
+          return false;
+        }
+      }
+
+      LLVM_DEBUG( dbgs() << "Function end [handleAllocaInst] " << "\n");
+      return true;    
+  }
+
+
   bool handleLoadInst(Attributor &A, LoadInst &LI, ItemInfo II,
                       SmallVectorImpl<ItemInfo> &Worklist) {
     SmallSetVector<Value *, 4> PotentialCopies;
@@ -11392,9 +11488,6 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
       if (handleCmp(A, *CI, CI->getOperand(0), CI->getOperand(1),
                     CI->getPredicate(), II, Worklist))
         return true;
-    
-    LLVM_DEBUG(dbgs() << "The instruction encountered was: " << I << "!\n");
-    LLVM_DEBUG(dbgs() << "The instruction Opcode was: " << I.getOpcode()  << "!\n");
 
     switch (I.getOpcode()) {
     case Instruction::Select:
@@ -11403,6 +11496,15 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
       return handlePHINode(A, cast<PHINode>(I), II, Worklist, LivenessAAs);
     case Instruction::Load:
       return handleLoadInst(A, cast<LoadInst>(I), II, Worklist);
+    case Instruction::Alloca:
+      {
+      LLVM_DEBUG(dbgs() << "The instruction encountered was: " << I << "!\n");
+      LLVM_DEBUG(dbgs() << "The instruction Opcode was: " << I.getOpcode()  << "!\n");
+      //return handleAllocaInst(A, cast<AllocaInst>(I), II, Worklist);
+      bool x = handleAllocaInst(A, cast<AllocaInst>(I), II, Worklist);
+      bool y = handleGenericInst(A, I, II, Worklist);
+      return x & y;
+      }
     default:
       return handleGenericInst(A, I, II, Worklist);
     };
