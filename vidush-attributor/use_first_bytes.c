@@ -3,32 +3,31 @@
 #include <string.h>
 
 typedef struct Foo{
-    int  a; 
-    int  b; 
-    char c; 
+  int a;
+  int b;
+  char c; 
 }Foo;
 
-Foo* foo(int* val){
-    Foo f;
-    f.a = 2 * (*val);
-    *val = *val * 10;
-    printf("field a is %d\n", f.a);
-    return &f;
-    
-} 
+Foo *foo(int *val) {
+  Foo f;
+  f.a = 2 * (*val);
+  *val = *val * 10;
+  printf("field a is %d\n", f.a);
+  return &f;
+}
 
-int main(int argc, char* argv[]){
-    
-    int val;
-    val = atoi(argv[1]);
-    Foo* f = foo(&val);
-    
-    f->a += val;
-    
-    printf("val is now %d\n", val);
-    printf("field a is now %d in main\n", f->a);
-    
-    return 0;
+int main(int argc, char *argv[]) {
+
+  int val;
+  val = atoi(argv[1]);
+  Foo *f = foo(&val);
+
+  f->a += val;
+
+  printf("val is now %d\n", val);
+  printf("field a is now %d in main\n", f->a);
+
+  return 0;
 }
 
 /*

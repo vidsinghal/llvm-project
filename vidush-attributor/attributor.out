@@ -15,8 +15,6 @@
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca %struct.Foo, align 4!
-The instruction Opcode was: 31!
 [Attributor] Update: [AAPointerInfo] for CtxI '  %f = alloca %struct.Foo, align 4' at position {flt:f [f@-1]} with state PointerInfo #0 bins
 
 [Attributor] Got 5 initial uses to check
@@ -41,8 +39,6 @@ Trying to determine the potential copies of   %2 = load i32, ptr %a, align 4 (on
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %a = alloca i32, align 4!
-The instruction Opcode was: 31!
 [Attributor] Update: [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #0 bins
 
 [Attributor] Got 4 initial uses to check
@@ -111,8 +107,6 @@ Trying to determine the potential copies of   store i32 %val, ptr %val.addr, ali
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %val.addr = alloca i32, align 4' at position {flt:val.addr [val.addr@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %val.addr = alloca i32, align 4!
-The instruction Opcode was: 31!
 [Attributor] Update: [AAPointerInfo] for CtxI '  %val.addr = alloca i32, align 4' at position {flt:val.addr [val.addr@-1]} with state PointerInfo #0 bins
 
 [Attributor] Got 2 initial uses to check
@@ -173,28 +167,27 @@ Trying to determine the potential copies of   store i32 10, ptr %field1, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca %struct.Foo, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca %struct.Foo, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
 Function end [handleAllocaInst] 
-[Attributor] Update: [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {} >)
+[Attributor] Update unchanged [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
-Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
+[Attributor] Update unchanged [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #0 objs, intra #0 objs
 
-[handleAllocaInst] The first offset is the start of the Alloca.
-[handleAllocaInst] Offset size cannot be reduced in Alloca.
-[Attributor] Update changed [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+[AAIsDead] Store has 0 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
-[Attributor] Update changed [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+[Attributor] Update: [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
 
-[Attributor] Update changed [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
 
-Visit underlying object   %f = alloca i32, align 4
-[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
 
 [Attributor] Update: [AAMemoryLocation] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state memory
 
@@ -207,22 +200,23 @@ Visit underlying object   %f = alloca i32, align 4
 [AAMemoryLocation] Categorize accessed locations for   store i32 10, ptr %field1, align 4
 [AAMemoryLocation] Categorize memory access with pointer:   store i32 10, ptr %field1, align 4 [  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0]
 [AAMemoryLocation] Categorize pointer locations for   %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0 [no memory]
-[AAMemoryLocation] Ptr value can be categorized:   %f = alloca i32, align 4 -> memory:constant,internal global,external global,argument,inaccessible,malloced,unknown
+[AAMemoryLocation] Accessed locations with pointer locations: no memory
+[AAMemoryLocation] Accessed locations for   store i32 10, ptr %field1, align 4: no memory
+[AAMemoryLocation] Categorize accessed locations for   store i32 %0, ptr %a, align 4
+[AAMemoryLocation] Categorize memory access with pointer:   store i32 %0, ptr %a, align 4 [  %a = alloca i32, align 4]
+[AAMemoryLocation] Categorize pointer locations for   %a = alloca i32, align 4 [no memory]
+[AAMemoryLocation] Ptr value can be categorized:   %a = alloca i32, align 4 -> memory:constant,internal global,external global,argument,inaccessible,malloced,unknown
 [AAMemoryLocation] Accessed locations with pointer locations: memory:stack
-[AAMemoryLocation] Accessed locations for   store i32 10, ptr %field1, align 4: memory:stack
-[Attributor] Update: [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
+[AAMemoryLocation] Accessed locations for   store i32 %0, ptr %a, align 4: memory:stack
+[Attributor] Update: [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
 
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Trying to determine the potential copies of   store i32 %add, ptr %a, align 4 (only exact: 0)
 Visit underlying object   %a = alloca i32, align 4
-[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
-
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
-
 [AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
 [Attributor] Update: [AANoRecurse] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state norecurse
 
@@ -246,32 +240,6 @@ Visit underlying object   %a = alloca i32, align 4
 
 [Attributor] Update changed [AANoRecurse] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state may-recurse
 
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update: [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
-
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
-
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-[AAMemoryLocation] Categorize accessed locations for   store i32 %0, ptr %a, align 4
-[AAMemoryLocation] Categorize memory access with pointer:   store i32 %0, ptr %a, align 4 [  %a = alloca i32, align 4]
-[AAMemoryLocation] Categorize pointer locations for   %a = alloca i32, align 4 [no memory]
-[AAMemoryLocation] Ptr value can be categorized:   %a = alloca i32, align 4 -> memory:constant,internal global,external global,argument,inaccessible,malloced,unknown
-[AAMemoryLocation] Accessed locations with pointer locations: memory:stack
-[AAMemoryLocation] Accessed locations for   store i32 %0, ptr %a, align 4: memory:stack
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %add, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
 [AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %add, ptr %a, align 4 intraprocedurally
 [AA]   store i32 %add, ptr %a, align 4 cannot reach   %1 = load i32, ptr %a, align 4 [Intra]
 [AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %1 = load i32, ptr %a, align 4 [ToFn]
@@ -300,17 +268,27 @@ Trying to determine the potential copies of   store i32 %2, ptr %field12, align 
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
 [handleAllocaInst] Offset size cannot be reduced in Alloca.
+[Attributor] Update: [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {} >)
+
+Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
+
+[handleAllocaInst] The first offset is the start of the Alloca.
+[handleAllocaInst] Offset size cannot be reduced in Alloca.
+[Attributor] Update changed [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
 [Attributor] Update changed [AAUnderlyingObjects] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
 Visit underlying object   %f = alloca i32, align 4
+[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+
 [AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
 [AAIsDead] Store has 0 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %2, ptr %field12, align 4' at position {flt: [@-1]} with state assumed-dead-store
@@ -331,8 +309,6 @@ Trying to determine the potential copies of   %3 = load i32, ptr %field13, align
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -372,8 +348,6 @@ Trying to determine the potential copies of   %4 = load i32, ptr %field15, align
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -438,42 +412,23 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 [Attributor] Update changed [AAMemoryLocation] for CtxI '  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add6)' at position {cs:call [call@-1]} with state all memory
 
-[AAMemoryLocation] Categorize call site:   %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add6) [0x55b373417de0]
+[AAMemoryLocation] Categorize call site:   %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add6) [0x55dd17d9e9f0]
 [AAMemoryLocation] Accessed locations for   %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add6): all memory
 [Attributor] Update changed [AAMemoryLocation] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state all memory
 
-[Attributor] Got 5 initial uses to check
-[Attributor] Update: [AAIsDead] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state assumed-dead
+[Attributor] Got 4 initial uses to check
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
 
-[Attributor] Got 1 initial uses to check
-[Attributor] Update changed [AAIsDead] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state assumed-live
-
-[Attributor] Update: [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
-
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
-
-[Attributor] Update: [AAIsDead] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state assumed-dead
-
-[Attributor] Got 1 initial uses to check
-[Attributor] Update changed [AAIsDead] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state assumed-live
-
-[Attributor] Update: [AAIsDead] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state assumed-dead
-
-[Attributor] Got 2 initial uses to check
-[Attributor] Update changed [AAIsDead] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state assumed-live
-
-[Attributor] Update: [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
-
-[Attributor] Got 1 initial uses to check
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
-
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
-
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
 [AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAMemoryBehavior] for CtxI '  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add6)' at position {cs:call [call@-1]} with state readnone
 
@@ -620,7 +575,7 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 
 [Attributor] Update: [AAAlign] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state align<4-4294967296>
 
-[Attributor] Update changed [AAAlign] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state align<4-4>
+[Attributor] Update unchanged [AAAlign] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state align<4-4294967296>
 
 [Attributor] Update: [AAAlign] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state align<4-4294967296>
 
@@ -734,7 +689,7 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 [Attributor] Update: [AAMemoryLocation] for CtxI '  call void @foo(i32 noundef 10)' at position {fn:main [main@-1]} with state memory
 
 [AAMemoryLocation] Categorize accessed locations for   call void @foo(i32 noundef 10)
-[AAMemoryLocation] Categorize call site:   call void @foo(i32 noundef 10) [0x55b37344ed10]
+[AAMemoryLocation] Categorize call site:   call void @foo(i32 noundef 10) [0x55dd17d8e830]
 [AAMemoryLocation] Accessed locations for   call void @foo(i32 noundef 10): all memory
 [Attributor] Update changed [AAMemoryLocation] for CtxI '  call void @foo(i32 noundef 10)' at position {fn:main [main@-1]} with state all memory
 
@@ -771,19 +726,17 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 
 [Attributor] Update unchanged [AAIsDead] for CtxI '  call void @foo(i32 noundef 10)' at position {cs_arg: [@0]} with state assumed-dead
 
-[Attributor] Identified and initialized 133 abstract attributes.
+[Attributor] Identified and initialized 128 abstract attributes.
 
 
-[Attributor] #Iteration: 1, Worklist size: 133
-[Attributor] #Iteration: 1, Worklist+Dependent size: 133
+[Attributor] #Iteration: 1, Worklist size: 128
+[Attributor] #Iteration: 1, Worklist+Dependent size: 128
 [Attributor] Update: [AAUndefinedBehavior] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state undefined-behavior
 
 [Attributor] Update unchanged [AAUndefinedBehavior] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state undefined-behavior
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -904,41 +857,20 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 getPotentialCopiesOfStoredValue!
 Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
-Visit underlying object   %f = alloca i32, align 4
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
-[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
+[AAIsDead] Store has 0 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
-[Attributor] Update: [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
+[Attributor] Update: [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #0 objs, intra #0 objs
 
-[Attributor] Update unchanged [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
+[Attributor] Update unchanged [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #0 objs, intra #0 objs
 
-[Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+[Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {} >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
 [handleAllocaInst] Offset size cannot be reduced in Alloca.
-[Attributor] Update unchanged [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
-
-[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
-
-[Attributor] Got 5 initial uses to check
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+[Attributor] Update changed [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
 [Attributor] Update: [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
 
@@ -965,14 +897,6 @@ Visit underlying object   %a = alloca i32, align 4
 [Attributor] Got 4 initial uses to check
 [Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
 
-[Attributor] Update: [AAInterFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(2)
-
-[Attributor] Update unchanged [AAInterFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(2)
-
-[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(21)
-
-[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(21)
-
 [Attributor] Update: [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
 
 [Attributor] Update unchanged [AAIsDead] for CtxI '  %1 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
@@ -992,6 +916,14 @@ Visit underlying object   %a = alloca i32, align 4
 [AA]   store i32 %add, ptr %a, align 4 can potentially reach   %2 = load i32, ptr %a, align 4 [Intra]
 [AAIsDead] Store has 2 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+[Attributor] Update: [AAInterFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(2)
+
+[Attributor] Update unchanged [AAInterFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(2)
+
+[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(15)
+
+[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(15)
 
 [Attributor] Update: [AAIsDead] for CtxI '  %2 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead
 
@@ -1024,13 +956,41 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
 [handleAllocaInst] Offset size cannot be reduced in Alloca.
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+
+[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+
+[Attributor] Got 5 initial uses to check
+[Attributor] Update: [AAIsDead] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update changed [AAIsDead] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state assumed-live
+
+[Attributor] Update: [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
+
+[Attributor] Update: [AAIsDead] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update changed [AAIsDead] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state assumed-live
+
+[Attributor] Update: [AAIsDead] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state assumed-dead
+
+[Attributor] Got 2 initial uses to check
+[Attributor] Update changed [AAIsDead] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state assumed-live
+
+[Attributor] Update: [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
+
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
 
 [Attributor] Update: [AAIsDead] for CtxI '  %3 = load i32, ptr %field13, align 4' at position {flt: [@-1]} with state assumed-dead
 
@@ -1062,8 +1022,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1121,8 +1079,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1152,16 +1108,6 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %add6 = add nsw i32 %4, %5' at position {flt:add6 [add6@-1]} with state set-state(< {} >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
-
-[Attributor] Got 1 initial uses to check
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
-
-[Attributor] Update: [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
-
-[Attributor] Got 1 initial uses to check
-[Attributor] Update unchanged [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
-
 [Attributor] Update: [AAPotentialValues] for CtxI '  %add4 = add nsw i32 %3, 1' at position {flt:add4 [add4@-1]} with state set-state(< {} >)
 
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %add4 = add nsw i32 %3, 1' at position {flt:add4 [add4@-1]} with state set-state(< {} >)
@@ -1170,6 +1116,10 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 [Attributor] Got 1 initial uses to check
 [Attributor] Update unchanged [AAIsDead] for CtxI '  %val.addr = alloca i32, align 4' at position {arg:val [val@0]} with state assumed-dead
+
+[Attributor] Update: [AAAlign] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state align<4-4294967296>
+
+[Attributor] Update changed [AAAlign] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state align<4-4>
 
 [Attributor] Update: [AAInterFnReachability] for CtxI '  call void @foo(i32 noundef 10)' at position {fn:main [main@-1]} with state #queries(1)
 
@@ -1185,31 +1135,33 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 
 
-[Attributor] #Iteration: 2, Worklist size: 2
-[Attributor] #Iteration: 2, Worklist+Dependent size: 14
+[Attributor] #Iteration: 2, Worklist size: 9
+[Attributor] #Iteration: 2, Worklist+Dependent size: 22
 [Attributor] Update: [AAUnderlyingObjects] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
 [Attributor] Update unchanged [AAUnderlyingObjects] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
-[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(41)
+[Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(41)
+Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[handleAllocaInst] The first offset is the start of the Alloca.
+[handleAllocaInst] Offset size cannot be reduced in Alloca.
+[Attributor] Update unchanged [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update: [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state assumed-dead
+
+[Attributor] Update: [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
+
+[Attributor] Got 1 initial uses to check
+[Attributor] Update unchanged [AAIsDead] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state assumed-dead
+
+[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(35)
+
+[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(35)
 
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
@@ -1319,26 +1271,21 @@ Visit underlying object   %val.addr = alloca i32, align 4
 [AA]   store i32 %val, ptr %val.addr, align 4 can potentially reach   %5 = load i32, ptr %val.addr, align 4 [Intra]
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %5 = load i32, ptr %val.addr, align 4' at position {flt: [@-1]} with state set-state(< {i32 %val[3], } >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
-Visit underlying object   %f = alloca i32, align 4
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
-[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
 [AA] No return is reachable, done
 [AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %val, ptr %val.addr, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
@@ -1351,15 +1298,15 @@ Visit underlying object   %val.addr = alloca i32, align 4
 [AAIsDead] Store has 1 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %val, ptr %val.addr, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
-[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
-
-[Attributor] Got 4 initial uses to check
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
-
 [Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
 
 [Attributor] Got 5 initial uses to check
 [Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+
+[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
+
+[Attributor] Got 4 initial uses to check
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {} >)
 
@@ -1381,10 +1328,14 @@ Visit underlying object   %f = alloca i32, align 4
 [AA] check @foo from   store i32 %add4, ptr %field13, align 4 is not checked backwards, abort
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {i32 10[3], } >)
 
+[Attributor] Update: [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #0 objs, intra #0 objs
+
+[Attributor] Update changed [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
 
-[Attributor] #Iteration: 3, Worklist size: 3
-[Attributor] #Iteration: 3, Worklist+Dependent size: 5
+
+[Attributor] #Iteration: 3, Worklist size: 4
+[Attributor] #Iteration: 3, Worklist+Dependent size: 7
 [Attributor] Update: [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {i32 10[3], } >)
 
 getPotentiallyLoadedValues!
@@ -1405,9 +1356,13 @@ Visit underlying object   %f = alloca i32, align 4
 [AA] check @foo from   store i32 %add4, ptr %field13, align 4 is not checked backwards, abort
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {i32 10[3], } >)
 
-[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(44)
+[Attributor] Update: [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
-[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(44)
+[Attributor] Update unchanged [AAUnderlyingObjects] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
+
+[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(39)
+
+[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(39)
 
 [Attributor] Update: [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #1 bins
 
@@ -1431,10 +1386,31 @@ Accesses by bin after update:
 
 [Attributor] Update unchanged [AAIsDead] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state assumed-dead
 
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
+Visit underlying object   %f = alloca i32, align 4
+[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
+[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 
-[Attributor] #Iteration: 4, Worklist size: 1
-[Attributor] #Iteration: 4, Worklist+Dependent size: 5
+
+[Attributor] #Iteration: 4, Worklist size: 2
+[Attributor] #Iteration: 4, Worklist+Dependent size: 6
 [Attributor] Update: [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #1 bins
 
 [Attributor] Got 4 initial uses to check
@@ -1453,21 +1429,9 @@ Accesses by bin after update:
        - c: <unknown>
 [Attributor] Update unchanged [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #1 bins
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update: [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(44)
 
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+[Attributor] Update unchanged [AAIntraFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(44)
 
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
@@ -1484,6 +1448,22 @@ Visit underlying object   %a = alloca i32, align 4
 [AA]   store i32 %add, ptr %a, align 4 can potentially reach   %2 = load i32, ptr %a, align 4 [Intra]
 [AAIsDead] Store has 2 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %2 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state set-state(< {} >)
 
@@ -1594,22 +1574,6 @@ Accesses by bin after update:
        - c: <unknown>
 [Attributor] Update unchanged [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #1 bins
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
@@ -1625,6 +1589,22 @@ Visit underlying object   %a = alloca i32, align 4
 [AA]   store i32 %add, ptr %a, align 4 can potentially reach   %2 = load i32, ptr %a, align 4 [Intra]
 [AAIsDead] Store has 2 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %2 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state set-state(< {} >)
 
@@ -1787,8 +1767,6 @@ Accesses by bin after update:
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1797,8 +1775,6 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1828,8 +1804,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1879,8 +1853,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1907,31 +1879,8 @@ Visit underlying object   %f = alloca i32, align 4
 [AA]   store i32 %add4, ptr %field13, align 4 can potentially reach   %4 = load i32, ptr %field15, align 4 [Intra]
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %4 = load i32, ptr %field15, align 4' at position {flt: [@-1]} with state set-state(< {} >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
-Visit underlying object   %f = alloca i32, align 4
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
-[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -1957,6 +1906,27 @@ Visit underlying object   %f = alloca i32, align 4
 [AA][Ret]   store i32 %add4, ptr %field13, align 4 can potentially reach   ret void [Intra]
 [AA] check @foo from   store i32 %add4, ptr %field13, align 4 is not checked backwards, abort
 [Attributor] Update unchanged [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {i32 10[3], } >)
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
+Visit underlying object   %f = alloca i32, align 4
+[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
+[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAPointerInfo] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state PointerInfo #1 bins
 
@@ -2034,22 +2004,6 @@ Accesses by bin after update:
 Generic inst   %add4 = add nsw i32 %3, 1 assumed simplified to i32 12
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %add4 = add nsw i32 %3, 1' at position {flt:add4 [add4@-1]} with state set-state(< {i32 12[3], } >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
@@ -2065,6 +2019,22 @@ Visit underlying object   %a = alloca i32, align 4
 [AA]   store i32 %add, ptr %a, align 4 can potentially reach   %2 = load i32, ptr %a, align 4 [Intra]
 [AAIsDead] Store has 2 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %2 = load i32, ptr %a, align 4' at position {flt: [@-1]} with state set-state(< {i32 11[3], } >)
 
@@ -2235,8 +2205,6 @@ Accesses by bin after update:
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2245,8 +2213,6 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2276,8 +2242,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2349,8 +2313,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2377,31 +2339,8 @@ Visit underlying object   %f = alloca i32, align 4
 [AA]   store i32 %add4, ptr %field13, align 4 can potentially reach   %4 = load i32, ptr %field15, align 4 [Intra]
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %4 = load i32, ptr %field15, align 4' at position {flt: [@-1]} with state set-state(< {i32 12[3], } >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
-Visit underlying object   %f = alloca i32, align 4
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
-[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2427,6 +2366,27 @@ Visit underlying object   %f = alloca i32, align 4
 [AA][Ret]   store i32 %add4, ptr %field13, align 4 can potentially reach   ret void [Intra]
 [AA] check @foo from   store i32 %add4, ptr %field13, align 4 is not checked backwards, abort
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {i32 10[3], i32 12[3], } >)
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
+Visit underlying object   %f = alloca i32, align 4
+[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
+[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 
 
@@ -2624,22 +2584,6 @@ Accesses by bin after update:
 
 [Attributor] Update changed [AAIsDead] for CtxI '  %add6 = add nsw i32 %4, %5' at position {flt:add6 [add6@-1]} with state assumed-live
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
-Visit underlying object   %a = alloca i32, align 4
-[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
-[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
-[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
-[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
@@ -2655,6 +2599,22 @@ Visit underlying object   %a = alloca i32, align 4
 [AA]   store i32 %add, ptr %a, align 4 can potentially reach   %2 = load i32, ptr %a, align 4 [Intra]
 [AAIsDead] Store has 2 potential copies.
 [Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %add, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 %0, ptr %a, align 4 (only exact: 0)
+Visit underlying object   %a = alloca i32, align 4
+[AA] Object '  %a = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %1 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 can potentially reach   %1 = load i32, ptr %a, align 4 [Intra]
+[AA] check   %2 = load i32, ptr %a, align 4 from   store i32 %0, ptr %a, align 4 intraprocedurally
+[AA]   store i32 %0, ptr %a, align 4 cannot reach   %2 = load i32, ptr %a, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %2 = load i32, ptr %a, align 4 [ToFn]
+[AA][Ret]   store i32 %0, ptr %a, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 [Attributor] Update: [AAIsDead] for CtxI '  %3 = load i32, ptr %field13, align 4' at position {flt: [@-1]} with state assumed-dead
 
@@ -2684,8 +2644,6 @@ Visit underlying object   %val.addr = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2694,8 +2652,6 @@ Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2725,8 +2681,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field13 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field13 [field13@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2756,8 +2710,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field15 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field15 [field15@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2806,31 +2758,8 @@ Visit underlying object   %f = alloca i32, align 4
 [AAPotentialValues] Not all potentially loaded values are dynamically unique:   %4 = load i32, ptr %field15, align 4
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %4 = load i32, ptr %field15, align 4' at position {flt: [@-1]} with state set-state(< {  %4 = load i32, ptr %field15, align 4[3], } >)
 
-[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
-getPotentialCopiesOfStoredValue!
-Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
-Visit underlying object   %f = alloca i32, align 4
-[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
-[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
-[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
-[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
-[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
-[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
-[AA] No return is reachable, done
-[AAIsDead] Store has 1 potential copies.
-[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
-
 [Attributor] Update: [AAPotentialValues] for CtxI '  %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field11 [field11@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-The instruction encountered was:   %f = alloca i32, align 4!
-The instruction Opcode was: 31!
 Was able to create AAPointer Info object [AAPointerInfo] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state PointerInfo #1 bins
 
 [handleAllocaInst] The first offset is the start of the Alloca.
@@ -2857,6 +2786,27 @@ Visit underlying object   %f = alloca i32, align 4
 [AA] check @foo from   store i32 %add4, ptr %field13, align 4 is not checked backwards, abort
 [AAPotentialValues] Not all potentially loaded values are dynamically unique:   %0 = load i32, ptr %field11, align 4
 [Attributor] Update changed [AAPotentialValues] for CtxI '  %0 = load i32, ptr %field11, align 4' at position {flt: [@-1]} with state set-state(< {  %0 = load i32, ptr %field11, align 4[3], } >)
+
+[Attributor] Update: [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
+
+getPotentialCopiesOfStoredValue!
+Trying to determine the potential copies of   store i32 10, ptr %field1, align 4 (only exact: 0)
+Visit underlying object   %f = alloca i32, align 4
+[AA] Object '  %f = alloca i32, align 4' is  thread local; non-captured stack object.
+[AA] check   %0 = load i32, ptr %field11, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 can potentially reach   %0 = load i32, ptr %field11, align 4 [Intra]
+[AA] check   %3 = load i32, ptr %field13, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %3 = load i32, ptr %field13, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %3 = load i32, ptr %field13, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AA] check   %4 = load i32, ptr %field15, align 4 from   store i32 10, ptr %field1, align 4 intraprocedurally
+[AA]   store i32 10, ptr %field1, align 4 cannot reach   %4 = load i32, ptr %field15, align 4 [Intra]
+[AA] Entry   %val.addr = alloca i32, align 4 of @foo cannot reach @  %4 = load i32, ptr %field15, align 4 [ToFn]
+[AA][Ret]   store i32 10, ptr %field1, align 4 cannot reach   ret void [Intra]
+[AA] No return is reachable, done
+[AAIsDead] Store has 1 potential copies.
+[Attributor] Update unchanged [AAIsDead] for CtxI '  store i32 10, ptr %field1, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 
 
@@ -2926,11 +2876,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] #Iteration: 18, Worklist size: 1
 [Attributor] #Iteration: 18, Worklist+Dependent size: 3
-[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
-
-[Attributor] Got 5 initial uses to check
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
-
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %2, ptr %field12, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
@@ -2952,6 +2897,11 @@ Visit underlying object   %f = alloca i32, align 4
 [AAIsDead] Store has 1 potential copies.
 [AAIsDead] Potential copy   %3 = load i32, ptr %field13, align 4 is assumed live!
 [Attributor] Update changed [AAIsDead] for CtxI '  store i32 %2, ptr %field12, align 4' at position {flt: [@-1]} with state assumed-live
+
+[Attributor] Update: [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
+
+[Attributor] Got 5 initial uses to check
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state assumed not-captured
 
 
 
@@ -2983,6 +2933,11 @@ Visit underlying object   %a = alloca i32, align 4
 
 [Attributor] #Iteration: 20, Worklist size: 1
 [Attributor] #Iteration: 20, Worklist+Dependent size: 3
+[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
+
+[Attributor] Got 4 initial uses to check
+[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
+
 [Attributor] Update: [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-dead-store
 
 getPotentialCopiesOfStoredValue!
@@ -2999,11 +2954,6 @@ Visit underlying object   %a = alloca i32, align 4
 [AAIsDead] Store has 1 potential copies.
 [AAIsDead] Potential copy   %1 = load i32, ptr %a, align 4 is assumed live!
 [Attributor] Update changed [AAIsDead] for CtxI '  store i32 %0, ptr %a, align 4' at position {flt: [@-1]} with state assumed-live
-
-[Attributor] Update: [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
-
-[Attributor] Got 4 initial uses to check
-[Attributor] Update unchanged [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state assumed not-captured
 
 
 
@@ -3082,10 +3032,6 @@ Visit underlying object   %f = alloca i32, align 4
 
 [Attributor] Manifest changed : [AAPotentialValues] for CtxI '  %field1 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field1 [field1@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
 
-[Attributor] Manifest unchanged : [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
-
-[Attributor] Manifest unchanged : [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state known not-captured
-
 [Attributor] Manifest unchanged : [AANoCapture] for CtxI '  %a = alloca i32, align 4' at position {flt:a [a@-1]} with state known not-captured
 
 [Attributor] Manifest unchanged : [AAInterFnReachability] for CtxI '  %val.addr = alloca i32, align 4' at position {fn:foo [foo@-1]} with state #queries(2)
@@ -3099,6 +3045,10 @@ Visit underlying object   %f = alloca i32, align 4
 [Attributor] Manifest unchanged : [AAUnderlyingObjects] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state UnderlyingObjects inter #1 objs, intra #1 objs
 
 [Attributor] Manifest changed : [AAPotentialValues] for CtxI '  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0' at position {flt:field12 [field12@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+
+[Attributor] Manifest unchanged : [AAPotentialValues] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state set-state(< {  %f = alloca i32, align 4[3], } >)
+
+[Attributor] Manifest unchanged : [AANoCapture] for CtxI '  %f = alloca i32, align 4' at position {flt:f [f@-1]} with state known not-captured
 
 [Attributor] Manifest unchanged : [AAPotentialValues] for CtxI '  %3 = load i32, ptr %field13, align 4' at position {flt: [@-1]} with state set-state(< {  %3 = load i32, ptr %field13, align 4[3], } >)
 
