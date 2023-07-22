@@ -5,7 +5,7 @@
 typedef struct Foo{
   int a;
   int b;
-  char c; 
+  char c;
 }Foo;
 
 Foo *foo(int *val) {
