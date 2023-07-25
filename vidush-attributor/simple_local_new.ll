@@ -9,15 +9,9 @@ target triple = "x86_64-unknown-linux-gnu"
 define dso_local void @foo(i32 noundef %val) #0 {
 entry:
   %val.addr = alloca i32, align 4
-  %f = alloca i32, align 4
   store i32 %val, ptr %val.addr, align 4
-  store i32 10, ptr %f, align 4
-  %0 = load i32, ptr %f, align 4
-  %add = add nsw i32 %0, 1
-  store i32 %add, ptr %f, align 4
-  %1 = load i32, ptr %f, align 4
-  %add3 = add nsw i32 %1, %val
-  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add3)
+  %add = add nsw i32 10, %val
+  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add)
   ret void
 }
 
@@ -42,4 +36,4 @@ attributes #2 = { nounwind }
 !2 = !{i32 7, !"PIE Level", i32 2}
 !3 = !{i32 7, !"uwtable", i32 2}
 !4 = !{i32 7, !"frame-pointer", i32 2}
-!5 = !{!"clang version 17.0.0 (git@github.com:vidsinghal/llvm-project.git 6a35ceaacf06a5fcaf649d4f63600a79b365e103)"}
+!5 = !{!"clang version 17.0.0 (git@github.com:vidsinghal/llvm-project.git 5217b5cf51b4507632122d56ef5bb90a80f8dd60)"}

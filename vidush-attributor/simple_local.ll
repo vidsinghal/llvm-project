@@ -17,13 +17,9 @@ entry:
   store i32 10, ptr %field1, align 4
   %field11 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0
   %0 = load i32, ptr %field11, align 4
-  %add = add nsw i32 %0, 1
-  store i32 %add, ptr %field11, align 4
-  %field12 = getelementptr inbounds %struct.Foo, ptr %f, i32 0, i32 0
-  %1 = load i32, ptr %field12, align 4
-  %2 = load i32, ptr %val.addr, align 4
-  %add3 = add nsw i32 %1, %2
-  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add3)
+  %1 = load i32, ptr %val.addr, align 4
+  %add = add nsw i32 %0, %1
+  %call = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %add)
   ret void
 }
 
@@ -47,4 +43,4 @@ attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protect
 !2 = !{i32 7, !"PIE Level", i32 2}
 !3 = !{i32 7, !"uwtable", i32 2}
 !4 = !{i32 7, !"frame-pointer", i32 2}
-!5 = !{!"clang version 17.0.0 (git@github.com:vidsinghal/llvm-project.git 6a35ceaacf06a5fcaf649d4f63600a79b365e103)"}
+!5 = !{!"clang version 17.0.0 (git@github.com:vidsinghal/llvm-project.git 5217b5cf51b4507632122d56ef5bb90a80f8dd60)"}

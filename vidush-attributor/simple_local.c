@@ -11,11 +11,8 @@ typedef struct Foo {
 void foo(int val){
 
     Foo f; 
-    f.field1 = 10; 
-    //int a = f.field1; 
-    //a = a + 1; 
-    //f.field1 = a; 
-    f.field1 += 1; 
+    f.field1 = 10;
+    //f.field1 += 1; 
     printf("Field 1 is %d\n", f.field1 + val);
 }
 
