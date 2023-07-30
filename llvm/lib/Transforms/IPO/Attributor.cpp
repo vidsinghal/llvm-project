@@ -1976,6 +1976,7 @@ bool Attributor::checkForAllInstructions(function_ref<bool(Instruction &)> Pred,
           : (getAAFor<AAIsDead>(QueryingAA, QueryIRP, DepClassTy::NONE));
 
   auto &OpcodeInstMap = InfoCache.getOpcodeInstMapForFunction(*Fn);
+
   if (!checkForAllInstructionsImpl(this, OpcodeInstMap, Pred, &QueryingAA,
                                    LivenessAA, Opcodes, UsedAssumedInformation,
                                    CheckBBLivenessOnly, CheckPotentiallyDead))
@@ -3498,6 +3499,22 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
   auto &OpcodeInstMap = InfoCache.getOpcodeInstMapForFunction(F);
   bool Success;
   bool UsedAssumedInformation = false;
+
+  // AllocaInstPredicate
+  auto AllocaInstPred = [&](Instruction &I) -> bool {
+    if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+      getOrCreateAAFor<AAAllocationInfo>(IRPosition::value(*AI));
+    }
+    return true;
+  };
+
+  Success = checkForAllInstructionsImpl(
+      nullptr, OpcodeInstMap, AllocaInstPred, nullptr, nullptr,
+      {(unsigned)Instruction::Alloca}, UsedAssumedInformation);
+  (void)Success;
+  assert(Success && "Expected the check call to be successful!");
+
+
   Success = checkForAllInstructionsImpl(
       nullptr, OpcodeInstMap, CallSitePred, nullptr, nullptr,
       {(unsigned)Instruction::Invoke, (unsigned)Instruction::CallBr,
@@ -3525,12 +3542,14 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
     }
     return true;
   };
+
   Success = checkForAllInstructionsImpl(
       nullptr, OpcodeInstMap, LoadStorePred, nullptr, nullptr,
       {(unsigned)Instruction::Load, (unsigned)Instruction::Store},
       UsedAssumedInformation);
   (void)Success;
   assert(Success && "Expected the check call to be successful!");
+
 }
 
 /// Helpers to ease debugging through output streams and print calls.
