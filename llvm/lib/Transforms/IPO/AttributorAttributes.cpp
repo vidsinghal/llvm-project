@@ -64,6 +64,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GraphWriter.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
@@ -883,11 +884,8 @@ struct AA::PointerInfo::State : public AbstractState {
                          AAPointerInfo::AccessKind Kind, Type *Ty,
                          Instruction *RemoteI = nullptr);
 
-  using OffsetBinsTy = DenseMap<RangeTy, SmallSet<unsigned, 4>>;
-
-  using const_bin_iterator = OffsetBinsTy::const_iterator;
-  const_bin_iterator begin() const { return OffsetBins.begin(); }
-  const_bin_iterator end() const { return OffsetBins.end(); }
+  AAPointerInfo::const_bin_iterator begin() const { return OffsetBins.begin(); }
+  AAPointerInfo::const_bin_iterator end() const { return OffsetBins.end(); }
   int64_t numOffsetBins() const { return OffsetBins.size(); }
 
   const AAPointerInfo::Access &getAccess(unsigned Index) const {
@@ -908,7 +906,7 @@ protected:
   // are all combined into a single Access object. This may result in loss of
   // information in RangeTy in the Access object.
   SmallVector<AAPointerInfo::Access> AccessList;
-  OffsetBinsTy OffsetBins;
+  AAPointerInfo::OffsetBinsTy OffsetBins;
   DenseMap<const Instruction *, SmallVector<unsigned>> RemoteIMap;
 
   /// See AAPointerInfo::forallInterferingAccesses.
@@ -1112,8 +1110,6 @@ struct AAPointerInfoImpl
     return AAPointerInfo::manifest(A);
   }
 
-  using OffsetBinsTy = DenseMap<AA::RangeTy, SmallSet<unsigned, 4>>;
-  using const_bin_iterator = OffsetBinsTy::const_iterator;
   virtual const_bin_iterator begin() const override { return State::begin(); }
   virtual const_bin_iterator end() const override { return State::end(); }
   virtual int64_t numOffsetBins() const override {
@@ -12680,24 +12676,46 @@ struct AAAllocationInfoImpl : public AAAllocationInfo {
     return AssumedAllocatedSize;
   }
 
-  bool isaMallocInst(Instruction *I) {
-    CallInst *Call = dyn_cast<CallInst>(I);
-    auto CallName = Call->getCalledFunction()->getName();
-    if (CallName.str() == "malloc")
-      return true;
+  Value *getSize(Attributor &A, CallBase *CB, const TargetLibraryInfo *TLI) {
 
-    return false;
-  };
+    auto Mapper = [&](const Value *V) -> const Value * {
+      bool UsedAssumedInformation = false;
+      if (std::optional<Constant *> SimpleV =
+              A.getAssumedConstant(*V, *this, UsedAssumedInformation))
+        if (*SimpleV)
+          return *SimpleV;
+      return V;
+    };
+
+    Value *Size = nullptr;
+
+    std::optional<APInt> SizeAPI = getAllocSize(CB, TLI, Mapper);
+    if (SizeAPI) {
+      Size = ConstantInt::get(CB->getContext(), *SizeAPI);
+    } else {
+      LLVMContext &Ctx = CB->getContext();
+      ObjectSizeOpts Opts;
+      const DataLayout &DL = A.getInfoCache().getDL();
+      ObjectSizeOffsetEvaluator Eval(DL, TLI, Ctx, Opts);
+      SizeOffsetEvalType SizeOffsetPair = Eval.compute(CB);
+      if (SizeOffsetPair != ObjectSizeOffsetEvaluator::unknown()) {
+        Size = SizeOffsetPair.first;
+      }
+    }
+
+    return Size;
+  }
 
   ChangeStatus updateImpl(Attributor &A) override {
 
-    Instruction *I = getIRPosition().getCtxI();
-
     const IRPosition &IRP = getIRPosition();
+    Instruction *I = IRP.getCtxI();
 
-    if (!(isa<AllocaInst>(I) || isaMallocInst(I)))
-      return llvm::IntegerStateBase<bool, true,
-                                    false>::indicatePessimisticFixpoint();
+    const Function *F = getAnchorScope();
+    const auto *TLI = A.getInfoCache().getTargetLibraryInfoForFunction(*F);
+
+    if (!(isa<AllocaInst>(I) || isAllocLikeFn(I, TLI)))
+      return indicatePessimisticFixpoint();
 
     const AAPointerInfo *PI =
         A.getOrCreateAAFor<AAPointerInfo>(IRP, *this, DepClassTy::REQUIRED);
@@ -12709,85 +12727,99 @@ struct AAAllocationInfoImpl : public AAAllocationInfo {
       return indicatePessimisticFixpoint();
 
     int64_t BinSize = PI->numOffsetBins();
+    switch (BinSize) {
+    case 0: {
+      switch (I->getOpcode()) {
+      case Instruction::Alloca: {
+        AllocaInst *AI = cast<AllocaInst>(I);
+        const DataLayout &DL = A.getDataLayout();
+        const auto AllocationSize = AI->getAllocationSize(DL);
 
-    // TODO: Handle for more than one Bin
-    if (BinSize > 1)
-      return indicatePessimisticFixpoint();
+        if (!AllocationSize || *AllocationSize == 0)
+          return indicatePessimisticFixpoint();
 
-    const auto &It = PI->begin();
+        break;
+      }
+      case Instruction::Call: {
 
-    if (BinSize == 0)
-      return indicatePessimisticFixpoint();
+        CallBase *CB = cast<CallBase>(I);
+        Value *Size = getSize(A, CB, TLI);
+        if (!Size)
+          return indicatePessimisticFixpoint();
 
-    if (It->first.Offset != 0)
-      return indicatePessimisticFixpoint();
+        ConstantInt *AllocationSize = dyn_cast<ConstantInt>(Size);
 
-    uint64_t OffsetEnd = It->first.Offset + It->first.Size;
-    const DataLayout &DL = A.getDataLayout();
+        if (!AllocationSize || AllocationSize->getZExtValue() == 0)
+          return indicatePessimisticFixpoint();
 
-    switch (I->getOpcode()) {
-    case Instruction::Alloca: {
-      AllocaInst *AI = dyn_cast<AllocaInst>(getIRPosition().getCtxI());
-      if (!AI)
+        break;
+      }
+      default:
         return indicatePessimisticFixpoint();
-      const auto &AllocationSize = AI->getAllocationSize(DL);
-
-      if (!AllocationSize || AllocationSize == 0)
-        return indicatePessimisticFixpoint();
-
-      if (OffsetEnd == *AllocationSize)
-        return indicatePessimisticFixpoint();
-
-      break;
-    }
-    case Instruction::Call: {
-
-      if (!isaMallocInst(I))
-        return llvm::IntegerStateBase<bool, true,
-                                      false>::indicatePessimisticFixpoint();
-
-      Value *ValueOperand = I->getOperand(0);
-
-      if (!ValueOperand)
-        return llvm::IntegerStateBase<bool, true,
-                                      false>::indicatePessimisticFixpoint();
-
-      ConstantInt *IntOperand = dyn_cast<ConstantInt>(ValueOperand);
-
-      if (!IntOperand) {
-        const AAPotentialConstantValues *PotentialConstant =
-            A.getOrCreateAAFor<AAPotentialConstantValues>(
-                IRPosition::value(*ValueOperand), *this, DepClassTy::REQUIRED);
-
-        if (!PotentialConstant || !PotentialConstant->isValidState())
-          return llvm::IntegerStateBase<bool, true,
-                                        false>::indicatePessimisticFixpoint();
-
-        Value *GetConstantAsValue =
-            PotentialConstant->getAssumedConstant(A).value();
-
-        IntOperand = dyn_cast<ConstantInt>(GetConstantAsValue);
-
-        if (!IntOperand)
-          return llvm::IntegerStateBase<bool, true,
-                                        false>::indicatePessimisticFixpoint();
       }
 
-      if (OffsetEnd == IntOperand->getZExtValue())
-        return llvm::IntegerStateBase<bool, true,
-                                      false>::indicatePessimisticFixpoint();
+      auto SizeOfTypeInBits = std::optional<TypeSize>(TypeSize(0, false));
 
+      if (!changeAllocationSize(SizeOfTypeInBits))
+        return ChangeStatus::UNCHANGED;
       break;
     }
-    default:
+    case 1: {
+      const auto &It = PI->begin();
+      if (It->first.Offset == 0) {
+
+        uint64_t OffsetEnd = It->first.Offset + It->first.Size;
+        const DataLayout &DL = A.getDataLayout();
+
+        switch (I->getOpcode()) {
+        case Instruction::Alloca: {
+          AllocaInst *AI = cast<AllocaInst>(I);
+          const auto AllocationSize = AI->getAllocationSize(DL);
+
+          if (!AllocationSize || *AllocationSize == 0)
+            return indicatePessimisticFixpoint();
+
+          if (OffsetEnd == *AllocationSize)
+            return indicatePessimisticFixpoint();
+
+          break;
+        }
+        case Instruction::Call: {
+
+          CallBase *CB = cast<CallBase>(I);
+          Value *Size = getSize(A, CB, TLI);
+          if (!Size)
+            return indicatePessimisticFixpoint();
+
+          ConstantInt *AllocationSize = dyn_cast<ConstantInt>(Size);
+
+          if (!AllocationSize || AllocationSize->getZExtValue() == 0)
+            return indicatePessimisticFixpoint();
+
+          if (OffsetEnd == AllocationSize->getZExtValue())
+            return indicatePessimisticFixpoint();
+
+          break;
+        }
+        default:
+          return indicatePessimisticFixpoint();
+        }
+
+        auto SizeOfTypeInBits =
+            std::optional<TypeSize>(TypeSize(OffsetEnd * 8, false));
+
+        if (!changeAllocationSize(SizeOfTypeInBits))
+          return ChangeStatus::UNCHANGED;
+      } else
+        /*TODO: when access does not start at the 0th byte of the bin*/
+        return indicatePessimisticFixpoint();
+      break;
+    }
+    default: {
+      /*TODO: Handle for multiple Bins*/
       return indicatePessimisticFixpoint();
     }
-
-    auto SizeOfTypeInBits =
-        std::optional<TypeSize>(TypeSize(OffsetEnd * 8, false));
-
-    if (!changeAllocationSize(SizeOfTypeInBits))
-      return ChangeStatus::UNCHANGED;
+    }
 
     return ChangeStatus::CHANGED;
   }
@@ -12812,7 +12844,7 @@ struct AAAllocationInfoImpl : public AAAllocationInfo {
     switch (I->getOpcode()) {
     case Instruction::Alloca: {
 
-      AllocaInst *AI = dyn_cast<AllocaInst>(I);
+      AllocaInst *AI = cast<AllocaInst>(I);
 
       AllocaInst *NewAllocaInst =
           new AllocaInst(CharType, AI->getAddressSpace(), NumBytesToValue,
@@ -12825,18 +12857,26 @@ struct AAAllocationInfoImpl : public AAAllocationInfo {
     }
     case Instruction::Call: {
 
-      if (!isaMallocInst(I))
-        return llvm::IntegerStateBase<bool, true,
-                                      false>::indicatePessimisticFixpoint();
+      const auto *TLI =
+          A.getInfoCache().getTargetLibraryInfoForFunction(*I->getFunction());
+      CallBase *CB = cast<CallBase>(I);
+      auto AllocaFamilyKind = getAllocationFamily(CB, TLI);
 
-      Type *IntPtrTy = IntegerType::getInt32Ty(I->getContext());
-      Instruction *NewMallocInst = CallInst::CreateMalloc(
-          I->getNextNode(), IntPtrTy, CharType, NumBytesToValue, nullptr,
-          nullptr, I->getName());
+      if (!AllocaFamilyKind)
+        return ChangeStatus::UNCHANGED;
 
-      if (A.changeAfterManifest(IRPosition::inst(*I), *NewMallocInst)) {
-        A.deleteAfterManifest(*I);
-        return ChangeStatus::CHANGED;
+      /*TODO: Handle for other kind of allocation functions*/
+      if (AllocaFamilyKind == "malloc") {
+
+        Type *IntPtrTy = IntegerType::getInt32Ty(I->getContext());
+        Instruction *NewMallocInst = CallInst::CreateMalloc(
+            I->getNextNode(), IntPtrTy, CharType, NumBytesToValue, nullptr,
+            nullptr, I->getName());
+
+        if (A.changeAfterManifest(IRPosition::inst(*I), *NewMallocInst)) {
+          A.deleteAfterManifest(*I);
+          return ChangeStatus::CHANGED;
+        }
       }
 
       break;
