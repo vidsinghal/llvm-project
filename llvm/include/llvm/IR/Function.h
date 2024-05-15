@@ -787,15 +787,17 @@ public:
   const BasicBlock       &getEntryBlock() const   { return front(); }
         BasicBlock       &getEntryBlock()         { return front(); }
 
-  //===--------------------------------------------------------------------===//
-  // Symbol Table Accessing functions...
+        BasicBlockListType &getBasicBlocks() { return BasicBlocks; }
+        //===--------------------------------------------------------------------===//
+        // Symbol Table Accessing functions...
 
-  /// getSymbolTable() - Return the symbol table if any, otherwise nullptr.
-  ///
-  inline ValueSymbolTable *getValueSymbolTable() { return SymTab.get(); }
-  inline const ValueSymbolTable *getValueSymbolTable() const {
+        /// getSymbolTable() - Return the symbol table if any, otherwise
+        /// nullptr.
+        ///
+        inline ValueSymbolTable *getValueSymbolTable() { return SymTab.get(); }
+        inline const ValueSymbolTable *getValueSymbolTable() const {
     return SymTab.get();
-  }
+        }
 
   //===--------------------------------------------------------------------===//
   // BasicBlock iterator forwarding functions
