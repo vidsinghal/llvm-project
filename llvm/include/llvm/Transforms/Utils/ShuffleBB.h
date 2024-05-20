@@ -11,13 +11,22 @@
 
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PassManager.h"
+#include <iterator>
+#include <random>
+#include <vector>
 
 namespace llvm {
 
 class ShuffleBasicBlocksPass : public PassInfoMixin<ShuffleBasicBlocksPass> {
 
+
+private:
+  std::vector<Function::iterator> BasicBlocks;
+
 public:
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  Function::iterator getOriginalAtIndex(int index);
+  void generateRandomBasicBlockPermutation(Function &F);
 };
 
 } // namespace llvm
