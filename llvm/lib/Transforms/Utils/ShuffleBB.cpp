@@ -143,9 +143,9 @@ void ShuffleBasicBlocksPass::generateRandomBasicBlockPermutation(Function &F) {
     IntVector[i] = i;
   }
   
-  Function::iterator InsertPoint = F.begin();
+  Function::iterator InsertPoint = F.end();
   //we don't want to insert before the entry block. 
-  InsertPoint++;
+  //InsertPoint++;
   while (!IntVector.empty()) {
     int NewIndex = getNewIndex(IntVector);
     errs() << NewIndex << "\n";
