@@ -152,6 +152,6 @@ void ShuffleBasicBlocksPass::generateRandomBasicBlockPermutation(Function &F) {
 
     Function::iterator RemovedBasicBlock = getOriginalAtIndex(NewIndex); 
     F.splice(InsertPoint, &F, RemovedBasicBlock);
-    InsertPoint = RemovedBasicBlock;
+    //InsertPoint = RemovedBasicBlock;
   }
 }
