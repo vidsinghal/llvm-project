@@ -12,8 +12,8 @@
 #include "Mapping.h"
 #include "Interface.h"
 #include "State.h"
-#include "Types.h"
-#include "Utils.h"
+#include "DeviceTypes.h"
+#include "DeviceUtils.h"
 
 #pragma omp begin declare target device_type(nohost)
 
@@ -364,10 +364,29 @@ _TGT_KERNEL_LANGUAGE(block_id, getBlockIdInKernel)
 _TGT_KERNEL_LANGUAGE(block_dim, getNumberOfThreadsInBlock)
 _TGT_KERNEL_LANGUAGE(grid_dim, getNumberOfBlocksInKernel)
 
+extern "C" [[clang::disable_sanitizer_instrumentation, gnu::flatten,
+             gnu::always_inline, gnu::used, gnu::retain]] int
+ompx_global_thread_id() {
+  return ompx_thread_id(0) + ompx_thread_id(1) * ompx_block_dim(0) +
+         ompx_thread_id(2) * ompx_block_dim(0) * ompx_block_dim(1);
+}
+
 extern "C" {
 uint64_t ompx_ballot_sync(uint64_t mask, int pred) {
   return utils::ballotSync(mask, pred);
 }
+
+#define _TGT_KERNEL_LANGUAGE_SHFL_SYNC(TYPE, TY)                               \
+  int ompx_shfl_sync_##TY(uint64_t mask, TYPE var, int src, int width) {       \
+    return utils::shuffle(mask, var, src, width);                              \
+  }
+
+_TGT_KERNEL_LANGUAGE_SHFL_SYNC(int, i)
+_TGT_KERNEL_LANGUAGE_SHFL_SYNC(float, f)
+_TGT_KERNEL_LANGUAGE_SHFL_SYNC(long, l)
+_TGT_KERNEL_LANGUAGE_SHFL_SYNC(double, d)
+
+#undef _TGT_KERNEL_LANGUAGE_SHFL_SYNC
 
 int ompx_shfl_down_sync_i(uint64_t mask, int var, unsigned delta, int width) {
   return utils::shuffleDown(mask, var, delta, width);

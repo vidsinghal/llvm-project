@@ -66,7 +66,8 @@ add_llvm_library(offload.kernels
   STATIC
 
   Kernels/Memory.cpp
-
+  Kernels/Sanitizer.cpp
+  
   LINK_LIBS
   PUBLIC
   omptarget.devicertl

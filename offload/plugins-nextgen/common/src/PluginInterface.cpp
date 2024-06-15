@@ -17,14 +17,22 @@
 #include "ErrorReporting.h"
 #include "GlobalHandler.h"
 #include "JIT.h"
+#include "Shared/Sanitizer.h"
+#include "Shared/Utils.h"
 #include "Utils/ELF.h"
 #include "omptarget.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/raw_ostream.h"
+#include <cstdio>
+#include <string>
 
 #ifdef OMPT_SUPPORT
 #include "OpenMP/OMPT/Callback.h"
 #include "omp-tools.h"
 #endif
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/Error.h"
@@ -77,7 +85,7 @@ private:
         Device->allocate(1024, /*HstPtr=*/nullptr, TARGET_ALLOC_DEFAULT);
     Device->free(Addr);
     // Align Address to MaxMemoryAllocation
-    Addr = (void *)alignPtr((Addr), MaxMemoryAllocation);
+    Addr = (void *)utils::alignPtr((Addr), MaxMemoryAllocation);
     return Addr;
   }
 
@@ -210,8 +218,8 @@ public:
     if (EC)
       report_fatal_error("Error saving image : " + StringRef(EC.message()));
     if (const auto *TgtImageBitcode = Image.getTgtImageBitcode()) {
-      size_t Size =
-          getPtrDiff(TgtImageBitcode->ImageEnd, TgtImageBitcode->ImageStart);
+      size_t Size = utils::getPtrDiff(TgtImageBitcode->ImageEnd,
+                                      TgtImageBitcode->ImageStart);
       MemoryBufferRef MBR = MemoryBufferRef(
           StringRef((const char *)TgtImageBitcode->ImageStart, Size), "");
       OS << MBR.getBuffer();
@@ -244,10 +252,10 @@ public:
 
       int32_t NameLength = std::strlen(OffloadEntry.Name) + 1;
       memcpy(BufferPtr, OffloadEntry.Name, NameLength);
-      BufferPtr = advanceVoidPtr(BufferPtr, NameLength);
+      BufferPtr = utils::advancePtr(BufferPtr, NameLength);
 
       *((uint32_t *)(BufferPtr)) = OffloadEntry.Size;
-      BufferPtr = advanceVoidPtr(BufferPtr, sizeof(uint32_t));
+      BufferPtr = utils::advancePtr(BufferPtr, sizeof(uint32_t));
 
       auto Err = Plugin::success();
       {
@@ -257,11 +265,12 @@ public:
       }
       if (Err)
         report_fatal_error("Error retrieving data for global");
-      BufferPtr = advanceVoidPtr(BufferPtr, OffloadEntry.Size);
+      BufferPtr = utils::advancePtr(BufferPtr, OffloadEntry.Size);
     }
     assert(BufferPtr == GlobalsMB->get()->getBufferEnd() &&
            "Buffer over/under-filled.");
-    assert(Size == getPtrDiff(BufferPtr, GlobalsMB->get()->getBufferStart()) &&
+    assert(Size == utils::getPtrDiff(BufferPtr,
+                                     GlobalsMB->get()->getBufferStart()) &&
            "Buffer size mismatch");
 
     StringRef GlobalsMemory(GlobalsMB.get()->getBufferStart(), Size);
@@ -737,7 +746,7 @@ GenericDeviceTy::GenericDeviceTy(GenericPluginTy &Plugin, int32_t DeviceId,
       OMPX_InitialNumEvents("LIBOMPTARGET_NUM_INITIAL_EVENTS", 1),
       DeviceId(DeviceId), GridValues(OMPGridValues),
       PeerAccesses(NumDevices, PeerAccessState::PENDING), PeerAccessesLock(),
-      PinnedAllocs(*this), RPCServer(nullptr) {
+      PinnedAllocs(*this), RPCServer(nullptr), GPUSan(*this) {
 #ifdef OMPT_SUPPORT
   OmptInitialized.store(false);
   // Bind the callbacks to this device's member functions
@@ -917,7 +926,7 @@ GenericDeviceTy::loadBinary(GenericPluginTy &Plugin,
 #ifdef OMPT_SUPPORT
   if (ompt::Initialized) {
     size_t Bytes =
-        getPtrDiff(InputTgtImage->ImageEnd, InputTgtImage->ImageStart);
+        utils::getPtrDiff(InputTgtImage->ImageEnd, InputTgtImage->ImageStart);
     performOmptCallback(
         device_load, Plugin.getUserId(DeviceId),
         /*FileName=*/nullptr, /*FileOffset=*/0, /*VmaInFile=*/nullptr,
@@ -929,6 +938,25 @@ GenericDeviceTy::loadBinary(GenericPluginTy &Plugin,
   // Call any global constructors present on the device.
   if (auto Err = callGlobalConstructors(Plugin, *Image))
     return std::move(Err);
+
+  auto GetKernel = [&](StringRef Name) -> GenericKernelTy * {
+    auto KernelOrErr = constructKernel(Name.data());
+    if (Error Err = KernelOrErr.takeError()) {
+      REPORT("Failure to look up kernel: %s\n",
+             toString(std::move(Err)).data());
+      return nullptr;
+    }
+    GenericKernelTy &Kernel = *KernelOrErr;
+    if (auto Err = Kernel.init(*this, *Image)) {
+      REPORT("Failure to init kernel: %s\n", toString(std::move(Err)).data());
+      return nullptr;
+    }
+    return &Kernel;
+  };
+  if (GenericKernelTy *Kernel = GetKernel("__sanitizer_register"))
+    addGPUSanNewFn(*Kernel);
+  if (GenericKernelTy *Kernel = GetKernel("__sanitizer_unregister"))
+    addGPUSanFreeFn(*Kernel);
 
   // Return the pointer to the table of entries.
   return Image;
@@ -1006,6 +1034,16 @@ Error GenericDeviceTy::setupDeviceMemoryPool(GenericPluginTy &Plugin,
                          sizeof(DeviceMemoryPoolTrackingTy),
                          &DeviceMemoryPoolTracking);
   if (auto Err = GHandler.writeGlobalToDevice(*this, Image, TrackerGlobal))
+    return Err;
+
+  auto *&SanitizerTrapInfo = SanitizerTrapInfos[&Image];
+  SanitizerTrapInfo = reinterpret_cast<SanitizerTrapInfoTy *>(allocate(
+      sizeof(*SanitizerTrapInfo), &SanitizerTrapInfo, TARGET_ALLOC_HOST));
+  memset(SanitizerTrapInfo, '\0', sizeof(SanitizerTrapInfoTy));
+
+  GlobalTy TrapId("__sanitizer_trap_info_ptr", sizeof(SanitizerTrapInfo),
+                  &SanitizerTrapInfo);
+  if (auto Err = GHandler.writeGlobalToDevice(*this, Image, TrapId))
     return Err;
 
   // Create the metainfo of the device environment global.
@@ -1145,8 +1183,8 @@ Expected<void *> PinnedAllocationMapTy::lockHostBuffer(void *HstPtr,
       return std::move(Err);
 
     // Return the device accessible pointer with the correct offset.
-    return advanceVoidPtr(Entry->DevAccessiblePtr,
-                          getPtrDiff(HstPtr, Entry->HstPtr));
+    return utils::advancePtr(Entry->DevAccessiblePtr,
+                             utils::getPtrDiff(HstPtr, Entry->HstPtr));
   }
 
   // No intersecting registered allocation found in the map. First, lock the
@@ -1732,7 +1770,7 @@ int32_t GenericPluginTy::is_initialized() const { return Initialized; }
 
 int32_t GenericPluginTy::is_plugin_compatible(__tgt_device_image *Image) {
   StringRef Buffer(reinterpret_cast<const char *>(Image->ImageStart),
-                   target::getPtrDiff(Image->ImageEnd, Image->ImageStart));
+                   utils::getPtrDiff(Image->ImageEnd, Image->ImageStart));
 
   auto HandleError = [&](Error Err) -> bool {
     [[maybe_unused]] std::string ErrStr = toString(std::move(Err));
@@ -1764,7 +1802,7 @@ int32_t GenericPluginTy::is_plugin_compatible(__tgt_device_image *Image) {
 int32_t GenericPluginTy::is_device_compatible(int32_t DeviceId,
                                               __tgt_device_image *Image) {
   StringRef Buffer(reinterpret_cast<const char *>(Image->ImageStart),
-                   target::getPtrDiff(Image->ImageEnd, Image->ImageStart));
+                   utils::getPtrDiff(Image->ImageEnd, Image->ImageStart));
 
   auto HandleError = [&](Error Err) -> bool {
     [[maybe_unused]] std::string ErrStr = toString(std::move(Err));
@@ -1926,8 +1964,10 @@ int32_t GenericPluginTy::data_unlock(int32_t DeviceId, void *Ptr) {
 }
 
 int32_t GenericPluginTy::data_notify_mapped(int32_t DeviceId, void *HstPtr,
-                                            int64_t Size) {
-  auto Err = getDevice(DeviceId).notifyDataMapped(HstPtr, Size);
+                                            void *DevicePtr, int64_t Size,
+                                            void *&FakeHstPtr) {
+  auto Err =
+      getDevice(DeviceId).notifyDataMapped(HstPtr, DevicePtr, Size, FakeHstPtr);
   if (Err) {
     REPORT("Failure to notify data mapped %p: %s\n", HstPtr,
            toString(std::move(Err)).data());
@@ -1937,8 +1977,9 @@ int32_t GenericPluginTy::data_notify_mapped(int32_t DeviceId, void *HstPtr,
   return OFFLOAD_SUCCESS;
 }
 
-int32_t GenericPluginTy::data_notify_unmapped(int32_t DeviceId, void *HstPtr) {
-  auto Err = getDevice(DeviceId).notifyDataUnmapped(HstPtr);
+int32_t GenericPluginTy::data_notify_unmapped(int32_t DeviceId, void *HstPtr,
+                                              void *FakeHstPtr) {
+  auto Err = getDevice(DeviceId).notifyDataUnmapped(HstPtr, FakeHstPtr);
   if (Err) {
     REPORT("Failure to notify data unmapped %p: %s\n", HstPtr,
            toString(std::move(Err)).data());
@@ -2205,6 +2246,217 @@ int32_t GenericPluginTy::get_function(__tgt_device_binary Binary,
   // Note that this is not the kernel's device address.
   *KernelPtr = &*KernelOrErr;
   return OFFLOAD_SUCCESS;
+}
+
+Error GPUSanTy::notifyDataMapped(void *DevicePtr, uint64_t Size,
+                                 void *&FakeHstPtr) {
+  FakeHstPtr = nullptr;
+  if (NewFns.empty())
+    return Plugin::success();
+  uint64_t Slot = SlotCnt--;
+  FakeHstPtr = __offload_get_new_sanitizer_ptr(Slot);
+  KernelArgsTy Args = {};
+  Args.NumTeams[0] = 1;
+  Args.ThreadLimit[0] = 1;
+  AsyncInfoWrapperTy AsyncInfoWrapper(Device, nullptr);
+  for (GenericKernelTy *NewFP : NewFns) {
+    struct {
+      void *Ptr;
+      uint64_t Length;
+      uint64_t Slot;
+    } KernelArgs{DevicePtr, Size, Slot};
+    KernelLaunchParamsTy ArgPtrs{sizeof(KernelArgs), &KernelArgs, nullptr};
+    Args.ArgPtrs = reinterpret_cast<void **>(&ArgPtrs);
+    Args.Flags.IsCUDA = true;
+    if (auto Err = NewFP->launch(Device, Args.ArgPtrs, nullptr, Args,
+                                 AsyncInfoWrapper)) {
+      AsyncInfoWrapper.finalize(Err);
+      return Err;
+    }
+  }
+
+  Error Err = Plugin::success();
+  AsyncInfoWrapper.finalize(Err);
+  return Err;
+}
+
+Error GPUSanTy::notifyDataUnmapped(void *FakeHstPtr) {
+  if (!FakeHstPtr)
+    return Plugin::success();
+  KernelArgsTy Args = {};
+  Args.NumTeams[0] = 1;
+  Args.ThreadLimit[0] = 1;
+  AsyncInfoWrapperTy AsyncInfoWrapper(Device, nullptr);
+  for (GenericKernelTy *FreeFn : FreeFns) {
+    KernelLaunchParamsTy ArgPtrs{sizeof(void *), &FakeHstPtr, nullptr};
+    Args.ArgPtrs = reinterpret_cast<void **>(&ArgPtrs);
+    Args.Flags.IsCUDA = true;
+    if (auto Err = FreeFn->launch(Device, Args.ArgPtrs, nullptr, Args,
+                                  AsyncInfoWrapper)) {
+      AsyncInfoWrapper.finalize(Err);
+      return Err;
+    }
+  }
+  Error Err = Plugin::success();
+  AsyncInfoWrapper.finalize(Err);
+  return Err;
+}
+
+void GPUSanTy::checkAndReportError() {
+  SanitizerTrapInfoTy *STI;
+  DeviceImageTy *Image = nullptr;
+  for (auto &It : Device.SanitizerTrapInfos) {
+    STI = It.second;
+    if (!STI || STI->ErrorCode == SanitizerTrapInfoTy::None)
+      continue;
+    Image = It.first;
+    break;
+  }
+  if (!Image)
+    return;
+
+  auto Green = []() { return "\033[1m\033[32m"; };
+  auto Blue = []() { return "\033[1m\033[34m"; };
+  auto Red = []() { return "\033[1m\033[31m"; };
+  auto Default = []() { return "\033[1m\033[0m"; };
+
+  GenericGlobalHandlerTy &GHandler = Device.Plugin.getGlobalHandler();
+  auto GetImagePtr = [&](GlobalTy &GV, bool Quiet = false) {
+    if (auto Err = GHandler.getGlobalMetadataFromImage(Device, *Image, GV)) {
+      if (Quiet)
+        consumeError(std::move(Err));
+      else
+        REPORT("WARNING: Failed to read backtrace "
+               "(%s)\n",
+               toString(std::move(Err)).data());
+      return false;
+    }
+    return true;
+  };
+  GlobalTy LocationsGV("__san.locations", -1);
+  GlobalTy LocationNamesGV("__san.location_names", -1);
+  GlobalTy AmbiguousCallsBitWidthGV("__san.num_ambiguous_calls", -1);
+  GlobalTy AmbiguousCallsLocationsGV("__san.ambiguous_calls_mapping", -1);
+  if (GetImagePtr(LocationsGV))
+    GetImagePtr(LocationNamesGV);
+  GetImagePtr(AmbiguousCallsBitWidthGV, /*Quiet=*/true);
+  GetImagePtr(AmbiguousCallsLocationsGV, /*Quiet=*/true);
+
+  fprintf(stderr, "============================================================"
+                  "====================\n");
+
+  auto PrintStackTrace = [&](int64_t LocationId) {
+    if (!LocationsGV.getPtr() || !LocationNamesGV.getPtr()) {
+      fprintf(stderr, "    no backtrace available\n");
+      return;
+    }
+    char *LocationNames = LocationNamesGV.getPtrAs<char>();
+    LocationEncodingTy *Locations = LocationsGV.getPtrAs<LocationEncodingTy>();
+    uint64_t *AmbiguousCallsBitWidth =
+        AmbiguousCallsBitWidthGV.getPtrAs<uint64_t>();
+    uint64_t *AmbiguousCallsLocations =
+        AmbiguousCallsLocationsGV.getPtrAs<uint64_t>();
+    int32_t FrameIdx = 0;
+    do {
+      LocationEncodingTy &LE = Locations[LocationId];
+      fprintf(stderr, "    #%i %s in %s:%lu:%lu\n", FrameIdx,
+              &LocationNames[LE.FunctionNameIdx],
+              &LocationNames[LE.FileNameIdx], LE.LineNo, LE.ColumnNo);
+      LocationId = LE.ParentIdx;
+      FrameIdx++;
+      if (LocationId < 0 && STI->CallId != 0 && AmbiguousCallsBitWidth &&
+          AmbiguousCallsLocations) {
+        uint64_t LastCallId =
+            STI->CallId & ((1 << *AmbiguousCallsBitWidth) - 1);
+        LocationId = AmbiguousCallsLocations[LastCallId - 1];
+        STI->CallId >>= (*AmbiguousCallsBitWidth);
+      }
+    } while (LocationId >= 0);
+    fputc('\n', stderr);
+  };
+
+  auto DiagnoseAccess = [&](StringRef Name) {
+    void *PC = reinterpret_cast<void *>(STI->PC);
+    void *Addr = utils::advancePtr(STI->AllocationStart, STI->PtrOffset);
+    fprintf(stderr,
+            "%sERROR: OffloadSanitizer %s access on address " DPxMOD
+            " at pc " DPxMOD "\n%s",
+            Red(), Name.data(), DPxPTR(Addr), DPxPTR(PC), Default());
+    fprintf(stderr,
+            "%s%s of size %u at " DPxMOD
+            " thread <%u, %u, %u> block <%lu, %lu, %lu> (acc %li, %s)\n%s",
+            Blue(), STI->AccessId > 0 ? "WRITE" : "READ", STI->AccessSize,
+            DPxPTR(Addr), STI->ThreadId[0], STI->ThreadId[1], STI->ThreadId[2],
+            STI->BlockId[0], STI->BlockId[1], STI->BlockId[2], STI->AccessId,
+            (STI->AllocationKind ? "heap" : "stack"), Default());
+    PrintStackTrace(STI->LocationId);
+    fprintf(
+        stderr,
+        "%s" DPxMOD " is located %lu bytes inside of a %lu-byte region [" DPxMOD
+        "," DPxMOD ")\n%s",
+        Green(), DPxPTR(Addr), STI->PtrOffset, STI->AllocationLength,
+        DPxPTR(STI->AllocationStart),
+        DPxPTR(utils::advancePtr(STI->AllocationStart, STI->AllocationLength)),
+        Default());
+    fprintf(stderr,
+            "%s Pointer[slot:%lu,tag:%u,kind:%i] "
+            "Allocation[slot:%d,tag:%u,kind:%i]\n%s",
+            Green(), STI->PtrSlot, STI->PtrTag, STI->PtrKind, STI->AllocationId,
+            STI->AllocationTag, STI->AllocationKind, Default());
+
+    AllocationInfoTy *AllocationInfo = nullptr;
+    if (STI->AllocationStart) {
+      auto AllocationTraceMap = Device.AllocationTraces.getExclusiveAccessor();
+      AllocationInfo = (*AllocationTraceMap)[STI->AllocationStart];
+    }
+    if (AllocationInfo) {
+      fprintf(stderr, "\nAllocated at\n");
+      fprintf(stderr, "%s", AllocationInfo->AllocationTrace.c_str());
+
+      if (!AllocationInfo->DeallocationTrace.empty()) {
+        fprintf(stderr, "\nDeallocated at\n");
+        fprintf(stderr, "%s", AllocationInfo->DeallocationTrace.c_str());
+      }
+    }
+
+  };
+
+  switch (STI->ErrorCode) {
+  case SanitizerTrapInfoTy::None:
+    llvm_unreachable("Unexpected exception");
+  case SanitizerTrapInfoTy::ExceedsLength:
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s\n%s", Red(), "exceeds length",
+            Default());
+    break;
+  case SanitizerTrapInfoTy::ExceedsSlots:
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s\n%s", Red(), "exceeds slots",
+            Default());
+    break;
+  case SanitizerTrapInfoTy::PointerOutsideAllocation:
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s : %p : %i %lu (%s)\n%s",
+            Red(), "outside allocation", STI->AllocationStart,
+            STI->AllocationId, STI->PtrSlot,
+            (STI->AllocationKind ? "heap" : "stack"), Default());
+    break;
+  case SanitizerTrapInfoTy::OutOfBounds: {
+    DiagnoseAccess("out-of-bounds");
+    break;
+  }
+  case SanitizerTrapInfoTy::UseAfterScope:
+    DiagnoseAccess("use-after-scope");
+    break;
+  case SanitizerTrapInfoTy::UseAfterFree:
+    DiagnoseAccess("use-after-free");
+    break;
+  case SanitizerTrapInfoTy::MemoryLeak:
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s\n%s", Red(), "memory leak",
+            Default());
+    break;
+  case SanitizerTrapInfoTy::GarbagePointer:
+    DiagnoseAccess("garbage-pointer");
+    break;
+  }
+  fflush(stderr);
 }
 
 bool llvm::omp::target::plugin::libomptargetSupportsRPC() {

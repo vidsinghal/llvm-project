@@ -706,7 +706,7 @@ struct CUDADeviceTy : public GenericDeviceTy {
       return Plugin::error("Wrong device Page size");
 
     // Ceil to page size.
-    Size = roundUp(Size, Granularity);
+    Size = utils::roundUp(Size, Granularity);
 
     // Create a handler of our allocation
     CUmemGenericAllocationHandle AHandle;
