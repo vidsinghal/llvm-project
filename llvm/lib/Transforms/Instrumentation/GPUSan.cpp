@@ -177,6 +177,29 @@ private:
   instrumentReturns(SmallVectorImpl<std::pair<AllocaInst *, Value *>> &Allocas,
                     SmallVectorImpl<ReturnInst *> &Returns);
 
+  // Function used by access instrumentation to replace all references to
+  // user global variables with shadow variable references
+  Value *replaceUserGlobals(IRBuilder<> &IRB, GlobalVariable *ShadowGlobal,
+                            Value *PtrOp, Value *&GlobalRef,
+                            Instruction *InsertBefore = nullptr);
+
+  void addCtor();
+  void addDtor();
+
+  // Creates a function that applies a given block to each shadow global that
+  // satisfies a certain predicate. This predicate is usually whether or not
+  // the shadow global is set.
+  Function *createApplyShadowGlobalFn(
+      const Twine &Name,
+      llvm::function_ref<Value *(IRBuilder<> &, Value *)> Predicate,
+      llvm::function_ref<void(IRBuilder<> &, GlobalVariable *,
+                              GlobalVariable *)>
+          Codegen);
+
+  // Global (un)registration functions
+  Function *createShadowGlobalRegisterFn();
+  Function *createShadowGlobalUnregisterFn();
+
   Value *getPC(IRBuilder<> &IRB);
   Value *getFunctionName(IRBuilder<> &IRB);
   Value *getFileName(IRBuilder<> &IRB);
@@ -206,7 +229,7 @@ private:
   FunctionCallee getNewFn(PtrOrigin PO) {
     assert(PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(NewFn[PO], "ompx_new" + getSuffix(PO), getPtrTy(PO),
-                         {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty});
+                         {getPtrTy(PO), Int64Ty, Int64Ty, Int32Ty, Int64Ty});
   }
   FunctionCallee getFreeFn(PtrOrigin PO) {
     assert(PO <= GLOBAL && "Origin does not need handling.");
@@ -275,6 +298,10 @@ private:
   bool HasAllocas;
   GlobalVariable *LocationsArray;
   SmallSetVector<CallBase *, 16> AmbiguousCalls;
+  int AllocationId = 1;
+
+  // Maps user-defined globals to shadow globals
+  SmallMapVector<const GlobalVariable *, GlobalVariable *, 16> UserGlobals;
 
   Type *VoidTy = Type::getVoidTy(Ctx);
   Type *IntptrTy = M.getDataLayout().getIntPtrType(Ctx);
@@ -319,6 +346,7 @@ private:
 
   void buildCallTreeInfo(Function &Fn, LocationInfoTy &LI);
   ConstantInt *getSourceIndex(Instruction &I, LocationInfoTy *LastLI = nullptr);
+  ConstantInt *getSourceIndex(const GlobalVariable *G);
 
   uint64_t addString(StringRef S) {
     const auto &It = UniqueStrings.insert({S, ConcatenatedString.size()});
@@ -408,6 +436,31 @@ ConstantInt *GPUSanImpl::getSourceIndex(Instruction &I,
   buildCallTreeInfo(Fn, *CurLI);
 
   encodeLocationInfo(*CurLI, CurIdx);
+
+  return ConstantInt::get(Int64Ty, Idx);
+}
+
+ConstantInt *GPUSanImpl::getSourceIndex(const GlobalVariable *G) {
+  SmallVector<DIGlobalVariableExpression *, 1> GlobalLocations;
+  G->getDebugInfo(GlobalLocations);
+
+  if (GlobalLocations.empty())
+    return ConstantInt::get(Int64Ty, 0); // Fallback
+
+  const auto *DLVar = GlobalLocations.front()->getVariable();
+
+  LocationInfoTy *LI = new LocationInfoTy();
+  LI->FileName = DLVar->getFilename();
+  LI->LineNo = DLVar->getLine();
+  LI->FunctionName = DLVar->getName();
+  LI->ColumnNo = 0;
+
+  bool IsNew;
+  uint64_t Idx;
+  std::tie(LI, Idx) = addLocationInfo(LI, IsNew);
+
+  if (IsNew)
+    encodeLocationInfo(*LI, Idx);
 
   return ConstantInt::get(Int64Ty, Idx);
 }
@@ -532,41 +585,201 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
   return PO;
 }
 
-bool GPUSanImpl::instrumentGlobals() {
+constexpr StringRef ShadowGlobalPrefix = "__san.global.";
+constexpr StringRef GlobalIgnorePrefix[] = {"__omp_", "llvm.", "_Z",
+                                            "__sanitizer_", "__san."};
+
+bool isUserGlobal(const GlobalVariable &G) {
+  auto Name = G.getName();
+  if (Name.empty())
+    return false;
+  for (const auto &s : GlobalIgnorePrefix) {
+    if (Name.starts_with(s))
+      return false;
+  }
+  return true;
+}
+
+Twine getShadowGlobalName(const GlobalVariable &G) {
+  return ShadowGlobalPrefix + G.getName();
+}
+
+Function *GPUSanImpl::createApplyShadowGlobalFn(
+    const Twine &Name,
+    llvm::function_ref<Value *(IRBuilder<> &, Value *)> Predicate,
+    llvm::function_ref<void(IRBuilder<> &, GlobalVariable *, GlobalVariable *)>
+        Codegen) {
+  Function *RegisterFn =
+      Function::Create(FunctionType::get(VoidTy, false),
+                       GlobalValue::PrivateLinkage, "__san." + Name, &M);
+  RegisterFn->addFnAttr(Attribute::DisableSanitizerInstrumentation);
+
+  BasicBlock *Entry = BasicBlock::Create(Ctx, "entry", RegisterFn);
+  IRBuilder<> IRB(Entry);
+
+  if (UserGlobals.empty()) {
+    IRB.CreateRetVoid();
+    return RegisterFn;
+  }
+
+  bool FirstGlobal = true;
+  SmallVector<BasicBlock *, 16> CheckPtrBlocks, ApplicationBlocks;
+  SmallVector<Value *, 16> Conditions;
+
+  for (auto &[UserGlobal, ShadowGlobal] : UserGlobals) {
+    BasicBlock *CheckBlock;
+    if (FirstGlobal) {
+      CheckBlock = Entry;
+      FirstGlobal = false;
+    } else {
+      auto CheckBlockName = "check_" + UserGlobal->getName() + "_shadow";
+      CheckBlock = BasicBlock::Create(Ctx, CheckBlockName, RegisterFn);
+      IRB.SetInsertPoint(CheckBlock);
+    }
+
+    auto *ShadowVal = IRB.CreateLoad(getPtrTy(GLOBAL), ShadowGlobal);
+    auto *ShadowIntVal = IRB.CreatePtrToInt(ShadowVal, Int64Ty);
+    auto *ShadowPredicate = Predicate(IRB, ShadowIntVal);
+
+    Conditions.push_back(ShadowPredicate);
+    CheckPtrBlocks.push_back(CheckBlock);
+
+    auto AppBlockName = "register_" + UserGlobal->getName() + "_apply";
+    BasicBlock *ApplicationBlock =
+        BasicBlock::Create(Ctx, AppBlockName, RegisterFn);
+    IRB.SetInsertPoint(ApplicationBlock);
+
+    Codegen(IRB, const_cast<GlobalVariable *>(UserGlobal), ShadowGlobal);
+    ApplicationBlocks.push_back(ApplicationBlock);
+  }
+
+  BasicBlock *End = BasicBlock::Create(Ctx, Name + "_end", RegisterFn);
+  IRB.SetInsertPoint(End);
+  IRB.CreateRetVoid();
+
+  // Insert block terminators
+  for (size_t i = 0; i < CheckPtrBlocks.size(); i++) {
+    auto NextBlock =
+        (i + 1 < CheckPtrBlocks.size()) ? CheckPtrBlocks[i + 1] : End;
+
+    IRB.SetInsertPoint(CheckPtrBlocks[i]);
+    IRB.CreateCondBr(Conditions[i], ApplicationBlocks[i], NextBlock);
+
+    IRB.SetInsertPoint(ApplicationBlocks[i]);
+    IRB.CreateBr(NextBlock);
+  }
+
+  return RegisterFn;
+}
+
+// Register shadow globals if they haven't already been set by host
+Function *GPUSanImpl::createShadowGlobalRegisterFn() {
+  auto PredicateCodegen = [&](IRBuilder<> &IRB, Value *PredicateValue) {
+    return IRB.CreateICmpEQ(PredicateValue, ConstantInt::get(Int64Ty, 0));
+  };
+  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *Usr,
+                             GlobalVariable *Shadow) {
+    auto *OriginalType = Usr->getValueType();
+    auto OrginalTypeSize = DL.getTypeAllocSize(OriginalType);
+
+    Value *PlainUserGlobal =
+        IRB.CreatePointerBitCastOrAddrSpaceCast(Usr, getPtrTy(GLOBAL));
+
+    auto *RegisterGlobalCall =
+        createCall(IRB, getNewFn(GLOBAL),
+                   {PlainUserGlobal, ConstantInt::get(Int64Ty, OrginalTypeSize),
+                    ConstantInt::get(Int64Ty, AllocationId++),
+                    ConstantInt::get(Int32Ty, -1), getSourceIndex(Usr)});
+    IRB.CreateStore(RegisterGlobalCall, Shadow);
+  };
+  return createApplyShadowGlobalFn("register_globals", PredicateCodegen,
+                                   ShadowFnCodegen);
+}
+
+Function *GPUSanImpl::createShadowGlobalUnregisterFn() {
+  auto FreeGlobalFn = getFreeFn(GLOBAL);
+  auto PredicateCodegen = [&](IRBuilder<> &IRB, Value *PredicateValue) {
+    return IRB.CreateICmpNE(PredicateValue, ConstantInt::get(Int64Ty, 0));
+  };
+  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *Usr,
+                             GlobalVariable *Shadow) {
+    Value *LoadDummyPtr = IRB.CreateLoad(getPtrTy(GLOBAL), Shadow);
+    createCall(IRB, FreeGlobalFn, {LoadDummyPtr, getSourceIndex(Usr)});
+  };
+  return createApplyShadowGlobalFn("unregister_globals", PredicateCodegen,
+                                   ShadowFnCodegen);
+}
+
+void GPUSanImpl::addCtor() {
+  Function *CtorFn =
+      Function::Create(FunctionType::get(VoidTy, false),
+                       GlobalValue::PrivateLinkage, "__san.ctor", &M);
+  CtorFn->addFnAttr(Attribute::DisableSanitizerInstrumentation);
+
+  BasicBlock *Entry = BasicBlock::Create(Ctx, "entry", CtorFn);
+  IRBuilder<> IRB(Entry);
+
+  // createCall(IRB, createShadowGlobalRegisterFn());
+  IRB.CreateRetVoid();
+
+  appendToGlobalCtors(M, CtorFn, 0, nullptr);
+}
+
+void GPUSanImpl::addDtor() {
   Function *DtorFn =
       Function::Create(FunctionType::get(VoidTy, false),
                        GlobalValue::PrivateLinkage, "__san.dtor", &M);
+  DtorFn->addFnAttr(Attribute::DisableSanitizerInstrumentation);
   BasicBlock *Entry = BasicBlock::Create(Ctx, "entry", DtorFn);
   IRBuilder<> IRB(Entry);
+
+  createCall(IRB, createShadowGlobalUnregisterFn());
   createCall(IRB, getLeakCheckFn());
+
   IRB.CreateRetVoid();
   appendToGlobalDtors(M, DtorFn, 0, nullptr);
+}
 
-  return true;
+bool GPUSanImpl::instrumentGlobals() {
+  bool Changed = false;
+  for (GlobalVariable &V : M.globals()) {
+    if (!isUserGlobal(V))
+      continue;
+    Twine ShadowName = getShadowGlobalName(V);
+    Constant *ShadowInit = Constant::getNullValue(Int64Ty);
+    auto *ShadowVar =
+        new GlobalVariable(M, Int64Ty, false, GlobalValue::ExternalLinkage,
+                           ShadowInit, ShadowName);
+    ShadowVar->setVisibility(GlobalValue::ProtectedVisibility);
+    UserGlobals.insert(std::make_pair(&V, ShadowVar));
+    Changed = true;
+  }
 
-  Function *DTorFn;
-  std::tie(DTorFn, std::ignore) = getOrCreateSanitizerCtorAndInitFunctions(
-      M, "ompx.ctor", "ompx.init",
-      /*InitArgTypes=*/{},
-      /*InitArgs=*/{},
-      // This callback is invoked when the functions are created the first
-      // time. Hook them into the global ctors list in that case:
-      [&](Function *Ctor, FunctionCallee) {
-        appendToGlobalCtors(M, Ctor, 0, Ctor);
-      });
-  return true;
+  return Changed;
+
+  // Function *DTorFn;
+  // std::tie(DTorFn, std::ignore) = getOrCreateSanitizerCtorAndInitFunctions(
+  //     M, "ompx.ctor", "ompx.init",
+  //     /*InitArgTypes=*/{},
+  //     /*InitArgs=*/{},
+  //  This callback is invoked when the functions are created the first
+  //  time. Hook them into the global ctors list in that case:
+  //    [&](Function *Ctor, FunctionCallee) {
+  //      appendToGlobalCtors(M, Ctor, 0, Ctor);
+  //    });
+  // return true;
 }
 
 Value *GPUSanImpl::instrumentAllocation(Instruction &I, Value &Size,
                                         FunctionCallee Fn, PtrOrigin PO) {
   IRBuilder<> IRB(I.getNextNode());
   Value *PlainI = IRB.CreatePointerBitCastOrAddrSpaceCast(&I, getPtrTy(PO));
-  static int AllocationId = 1;
-  auto *CB =
-      createCall(IRB, Fn,
-                 {PlainI, &Size, ConstantInt::get(Int64Ty, AllocationId++),
-                  getSourceIndex(I)},
-                 I.getName() + ".san");
+  auto *CB = createCall(
+      IRB, Fn,
+      {PlainI, &Size, ConstantInt::get(Int64Ty, AllocationId++),
+       ConstantInt::get(Int32Ty, -1), // Runtime overrides slot for local vars
+       getSourceIndex(I)},
+      I.getName() + ".san");
   SmallVector<LifetimeIntrinsic *> Lifetimes;
   I.replaceUsesWithIf(
       IRB.CreatePointerBitCastOrAddrSpaceCast(CB, I.getType()), [&](Use &U) {
@@ -600,6 +813,40 @@ Value *GPUSanImpl::instrumentAllocaInst(LoopInfo &LI, AllocaInst &AI) {
   return instrumentAllocation(AI, *Size, getNewFn(LOCAL), LOCAL);
 }
 
+Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
+                                      GlobalVariable *ShadowGlobal,
+                                      Value *PtrOp, Value *&GlobalRef,
+                                      Instruction *InsertBefore) {
+  auto CreateGlobalRef = [&]() {
+    if (InsertBefore) {
+      GlobalRef = new LoadInst(getPtrTy(GLOBAL), ShadowGlobal,
+                               "load_shadow_global", InsertBefore);
+    } else {
+      GlobalRef = IRB.CreateLoad(getPtrTy(GLOBAL), ShadowGlobal);
+    }
+    return GlobalRef;
+  };
+
+  if (auto *Inst = dyn_cast<GetElementPtrInst>(PtrOp)) {
+    auto *NewOperand = replaceUserGlobals(
+        IRB, ShadowGlobal, Inst->getPointerOperand(), GlobalRef, Inst);
+    Inst->setOperand(0, NewOperand);
+    return Inst;
+  }
+
+  auto *C = dyn_cast<ConstantExpr>(PtrOp);
+  if (C && isa<GEPOperator>(PtrOp)) {
+    if (auto *Inst = dyn_cast<GetElementPtrInst>(C->getAsInstruction())) {
+      Inst->setOperand(0, CreateGlobalRef());
+      return IRB.Insert(Inst);
+    } else {
+      llvm_unreachable("Expected GEP instruction");
+    }
+  }
+
+  return CreateGlobalRef();
+}
+
 void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
                                   Type &AccessTy, bool IsRead) {
   Value *PtrOp = I.getOperand(PtrIdx);
@@ -611,9 +858,24 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
   Value *Start = nullptr;
   Value *Length = nullptr;
   Value *Tag = nullptr;
-  if (PO != UNKNOWN && Object)
-    getAllocationInfo(*I.getFunction(), PO, *const_cast<Value *>(Object), Start,
-                      Length, Tag);
+  IRBuilder<> IRB(&I);
+
+  if (Object && PO != UNKNOWN) {
+    Value *ObjectRef = const_cast<Value *>(Object);
+
+    // Replace any references to user-defined global variables
+    // with their respective shadow globals
+    auto *GlobalCast = dyn_cast<GlobalVariable>(ObjectRef);
+    if (GlobalCast && UserGlobals.contains(GlobalCast)) {
+      auto *ShadowGlobal = UserGlobals.lookup(GlobalCast);
+      Value *LoadDummyPtr, *NewPtr;
+      NewPtr = replaceUserGlobals(IRB, ShadowGlobal, PtrOp, LoadDummyPtr);
+      ObjectRef = LoadDummyPtr;
+      PtrOp = NewPtr;
+    }
+
+    getAllocationInfo(*I.getFunction(), PO, *ObjectRef, Start, Length, Tag);
+  }
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
     auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
@@ -627,7 +889,7 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
   auto TySize = DL.getTypeStoreSize(&AccessTy);
   assert(!TySize.isScalable());
   Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
-  IRBuilder<> IRB(&I);
+
   Value *PlainPtrOp =
       IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
   CallInst *CB;
@@ -808,6 +1070,9 @@ bool GPUSanImpl::instrument() {
       }
     }
   }
+
+  addCtor();
+  addDtor();
 
   SmallVector<CallBase *> AmbiguousCallsOrdered;
   SmallVector<Constant *> AmbiguousCallsMapping;

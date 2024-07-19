@@ -79,7 +79,7 @@ template <AllocationKind AK> struct AllocationTracker {
 
   [[clang::disable_sanitizer_instrumentation]] static _AS_PTR(void, AK)
       create(_AS_PTR(void, AK) Start, uint64_t Length, int64_t AllocationId,
-             uint64_t Slot, int64_t SourceId) {
+             int64_t Slot, int64_t SourceId) {
     if constexpr (SanitizerConfig<AK>::OFFSET_BITS < 64)
       if (OMP_UNLIKELY(Length >= (1UL << (SanitizerConfig<AK>::OFFSET_BITS))))
         __sanitizer_trap_info_ptr->exceedsAllocationLength<AK>(
@@ -89,6 +89,8 @@ template <AllocationKind AK> struct AllocationTracker {
     auto &AllocArr = getAllocationArray<AK>();
     auto &Cnt = AllocArr.Cnt;
     if constexpr (AK == AllocationKind::LOCAL)
+      Slot = ++Cnt;
+    if (Slot == -1)
       Slot = ++Cnt;
 
     uint64_t NumSlots = SanitizerConfig<AK>::SLOTS;
@@ -236,14 +238,14 @@ extern "C" {
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::LOCAL)
     ompx_new_local(_AS_PTR(void, AllocationKind::LOCAL) Start, uint64_t Length,
-                   int64_t AllocationId, uint32_t Slot, int64_t SourceId) {
+                   int64_t AllocationId, int32_t Slot, int64_t SourceId) {
   return AllocationTracker<AllocationKind::LOCAL>::create(
       Start, Length, AllocationId, Slot, SourceId);
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::GLOBAL)
     ompx_new_global(_AS_PTR(void, AllocationKind::GLOBAL) Start,
-                    uint64_t Length, int64_t AllocationId, uint32_t Slot,
+                    uint64_t Length, int64_t AllocationId, int32_t Slot,
                     int64_t SourceId) {
   return AllocationTracker<AllocationKind::GLOBAL>::create(
       Start, Length, AllocationId, Slot, SourceId);
