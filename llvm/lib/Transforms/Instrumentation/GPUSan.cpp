@@ -229,7 +229,7 @@ private:
   FunctionCallee getNewFn(PtrOrigin PO) {
     assert(PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(NewFn[PO], "ompx_new" + getSuffix(PO), getPtrTy(PO),
-                         {getPtrTy(PO), Int64Ty, Int64Ty, Int32Ty, Int64Ty});
+                         {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty, Int64Ty});
   }
   FunctionCallee getFreeFn(PtrOrigin PO) {
     assert(PO <= GLOBAL && "Origin does not need handling.");
@@ -243,14 +243,14 @@ private:
     assert(PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(CheckFn[PO], "ompx_check" + getSuffix(PO),
                          getPtrTy(PO),
-                         {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty});
+                         {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty, Int64Ty});
   }
   FunctionCallee getCheckWithBaseFn(PtrOrigin PO) {
     assert(PO >= LOCAL && PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(CheckWithBaseFn[PO],
                          "ompx_check_with_base" + getSuffix(PO), getPtrTy(PO),
                          {getPtrTy(PO), getPtrTy(PO), Int64Ty, Int32Ty, Int64Ty,
-                          Int64Ty, Int64Ty});
+                          Int64Ty, Int64Ty, Int64Ty});
   }
   FunctionCallee getAllocationInfoFn(PtrOrigin PO) {
     assert(PO >= LOCAL && PO <= GLOBAL && "Origin does not need handling.");
@@ -776,12 +776,11 @@ Value *GPUSanImpl::instrumentAllocation(Instruction &I, Value &Size,
                                         FunctionCallee Fn, PtrOrigin PO) {
   IRBuilder<> IRB(I.getNextNode());
   Value *PlainI = IRB.CreatePointerBitCastOrAddrSpaceCast(&I, getPtrTy(PO));
-  auto *CB = createCall(
-      IRB, Fn,
-      {PlainI, &Size, ConstantInt::get(Int64Ty, AllocationId++),
-       ConstantInt::get(Int32Ty, -1), // Runtime overrides slot for local vars
-       getSourceIndex(I)},
-      I.getName() + ".san");
+  auto *CB =
+      createCall(IRB, Fn,
+                 {PlainI, &Size, ConstantInt::get(Int64Ty, AllocationId++),
+                  getSourceIndex(I), getPC(IRB)},
+                 I.getName() + ".san");
   SmallVector<LifetimeIntrinsic *> Lifetimes;
   I.replaceUsesWithIf(
       IRB.CreatePointerBitCastOrAddrSpaceCast(CB, I.getType()), [&](Use &U) {
@@ -898,12 +897,13 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
   if (Start) {
     CB = createCall(IRB, getCheckWithBaseFn(PO),
                     {PlainPtrOp, Start, Length, Tag, Size,
-                     ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I)},
+                     ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
+                     getPC(IRB)},
                     I.getName() + ".san");
   } else {
     CB = createCall(IRB, getCheckFn(PO),
                     {PlainPtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
-                     getSourceIndex(I)},
+                     getSourceIndex(I), getPC(IRB)},
                     I.getName() + ".san");
   }
   I.setOperand(PtrIdx,
