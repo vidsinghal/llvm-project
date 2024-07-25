@@ -450,6 +450,11 @@ static int loadImagesOntoDevice(DeviceTy &Device) {
                                     CurrHostEntry->size,
                                     Entry->FakeTgtPtrBegin))
           return OFFLOAD_FAIL;
+
+        auto &DeviceInterface = Device.RTL->getDevice(DeviceId);
+        if (DeviceInterface.transferFakePtrToDevice(CurrHostEntry->name,
+                                                    Entry->FakeTgtPtrBegin))
+          return OFFLOAD_FAIL;
       }
     }
     Device.setHasPendingImages(false);
