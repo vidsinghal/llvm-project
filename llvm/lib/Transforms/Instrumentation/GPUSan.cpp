@@ -814,6 +814,27 @@ Value *GPUSanImpl::instrumentAllocaInst(LoopInfo &LI, AllocaInst &AI) {
   return instrumentAllocation(AI, *Size, getNewFn(LOCAL), LOCAL);
 }
 
+// Changes GEP instruction PtrOp and ensures instruction type corresponds
+// with new Ptr type. In some cases, the new pointer will not match the
+// original GEP inst's addressspace.
+void changePtrOperand(GetElementPtrInst *GEP, Value *NewPtrOp) {
+  Type *OldType = GEP->getPointerOperandType();
+  GEP->setOperand(GetElementPtrInst::getPointerOperandIndex(), NewPtrOp);
+
+  if (OldType == NewPtrOp->getType())
+    return;
+
+  SmallVector<Value *> IdxList;
+  IdxList.reserve(GEP->getNumIndices());
+  for (auto &Usr : GEP->indices())
+    IdxList.push_back(Usr.get());
+
+  auto *ExpectedTy = GetElementPtrInst::getGEPReturnType(NewPtrOp, IdxList);
+
+  if (ExpectedTy != GEP->getType())
+    GEP->mutateType(ExpectedTy);
+}
+
 Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
                                       GlobalVariable *ShadowGlobal,
                                       Value *PtrOp, Value *&GlobalRef,
@@ -832,10 +853,7 @@ Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
   if (auto *Inst = dyn_cast<GetElementPtrInst>(PtrOp)) {
     auto *NewOperand = replaceUserGlobals(
         IRB, ShadowGlobal, Inst->getPointerOperand(), GlobalRef, Inst);
-    Inst->setOperand(GetElementPtrInst::getPointerOperandIndex(), NewOperand);
-
-    if (Inst->getType() != NewOperand->getType())
-      Inst->mutateType(NewOperand->getType());
+    changePtrOperand(Inst, NewOperand);
 
     return Inst;
   }
@@ -843,11 +861,7 @@ Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
   auto *C = dyn_cast<ConstantExpr>(PtrOp);
   if (C && isa<GEPOperator>(PtrOp)) {
     if (auto *Inst = dyn_cast<GetElementPtrInst>(C->getAsInstruction())) {
-      auto *G = CreateGlobalRef();
-      Inst->setOperand(GetElementPtrInst::getPointerOperandIndex(), G);
-
-      if (Inst->getType() != G->getType())
-        Inst->mutateType(G->getType());
+      changePtrOperand(Inst, CreateGlobalRef());
 
       auto IP = IRB.saveIP();
       if (InsertBefore)
@@ -1215,6 +1229,5 @@ PreservedAnalyses GPUSanPass::run(Module &M, ModuleAnalysisManager &AM) {
   if (!Lowerer.instrument())
     return PreservedAnalyses::all();
   LLVM_DEBUG(M.dump());
-  // M.dump();
   return PreservedAnalyses::none();
 }
