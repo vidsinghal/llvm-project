@@ -1,6 +1,6 @@
 // clang-format off
 // RUN: %libomptarget-compileopt-generic -fsanitize=offload
-// RUN: not %libomptarget-run-generic 2>&1 > %t.out
+// RUN: not %libomptarget-run-generic 2> %t.out
 // RUN: %fcheck-generic --check-prefixes=CHECK < %t.out
 // clang-format on
 
@@ -19,4 +19,5 @@ int main(void) {
   int *Random = &X;
 #pragma omp target
   { *Random = 99; }
+  // CHECK: 0x{{[a-f0-9]*}} is located {{[0-9]*}} bytes inside
 }

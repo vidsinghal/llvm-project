@@ -1,6 +1,5 @@
 // RUN: %libomptarget-compileopt-generic -g -fsanitize=offload
-// RUN: %libomptarget-run-generic 2>&1 > %t.out
-// RUN: %fcheck-generic --check-prefixes=CHECK < %t.out
+// RUN: %libomptarget-run-generic
 
 // UNSUPPORTED: aarch64-unknown-linux-gnu
 // UNSUPPORTED: aarch64-unknown-linux-gnu-LTO

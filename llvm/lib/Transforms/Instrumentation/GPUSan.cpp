@@ -691,7 +691,7 @@ Function *GPUSanImpl::createShadowGlobalRegisterFn() {
         createCall(IRB, getNewFn(GLOBAL),
                    {PlainUserGlobal, ConstantInt::get(Int64Ty, OrginalTypeSize),
                     ConstantInt::get(Int64Ty, AllocationId++),
-                    ConstantInt::get(Int32Ty, -1), getSourceIndex(Usr)});
+                    getSourceIndex(Usr), getPC(IRB)});
     IRB.CreateStore(RegisterGlobalCall, Shadow);
   };
   return createApplyShadowGlobalFn("register_globals", PredicateCodegen,
@@ -818,12 +818,13 @@ Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
                                       GlobalVariable *ShadowGlobal,
                                       Value *PtrOp, Value *&GlobalRef,
                                       Instruction *InsertBefore) {
+  Type *ShadowPtrType = getPtrTy(GLOBAL);
   auto CreateGlobalRef = [&]() {
     if (InsertBefore) {
-      GlobalRef = new LoadInst(getPtrTy(GLOBAL), ShadowGlobal,
+      GlobalRef = new LoadInst(ShadowPtrType, ShadowGlobal,
                                "load_shadow_global", InsertBefore);
     } else {
-      GlobalRef = IRB.CreateLoad(getPtrTy(GLOBAL), ShadowGlobal);
+      GlobalRef = IRB.CreateLoad(ShadowPtrType, ShadowGlobal);
     }
     return GlobalRef;
   };
@@ -831,15 +832,30 @@ Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
   if (auto *Inst = dyn_cast<GetElementPtrInst>(PtrOp)) {
     auto *NewOperand = replaceUserGlobals(
         IRB, ShadowGlobal, Inst->getPointerOperand(), GlobalRef, Inst);
-    Inst->setOperand(0, NewOperand);
+    Inst->setOperand(GetElementPtrInst::getPointerOperandIndex(), NewOperand);
+
+    if (Inst->getType() != NewOperand->getType())
+      Inst->mutateType(NewOperand->getType());
+
     return Inst;
   }
 
   auto *C = dyn_cast<ConstantExpr>(PtrOp);
   if (C && isa<GEPOperator>(PtrOp)) {
     if (auto *Inst = dyn_cast<GetElementPtrInst>(C->getAsInstruction())) {
-      Inst->setOperand(0, CreateGlobalRef());
-      return IRB.Insert(Inst);
+      auto *G = CreateGlobalRef();
+      Inst->setOperand(GetElementPtrInst::getPointerOperandIndex(), G);
+
+      if (Inst->getType() != G->getType())
+        Inst->mutateType(G->getType());
+
+      auto IP = IRB.saveIP();
+      if (InsertBefore)
+        IRB.SetInsertPoint(InsertBefore);
+      auto I = IRB.Insert(Inst);
+      IRB.restoreIP(IP);
+
+      return I;
     } else {
       llvm_unreachable("Expected GEP instruction");
     }
@@ -869,10 +885,9 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     auto *GlobalCast = dyn_cast<GlobalVariable>(ObjectRef);
     if (GlobalCast && UserGlobals.contains(GlobalCast)) {
       auto *ShadowGlobal = UserGlobals.lookup(GlobalCast);
-      Value *LoadDummyPtr, *NewPtr;
-      NewPtr = replaceUserGlobals(IRB, ShadowGlobal, PtrOp, LoadDummyPtr);
+      Value *LoadDummyPtr;
+      PtrOp = replaceUserGlobals(IRB, ShadowGlobal, PtrOp, LoadDummyPtr);
       ObjectRef = LoadDummyPtr;
-      PtrOp = NewPtr;
     }
 
     getAllocationInfo(*I.getFunction(), PO, *ObjectRef, Start, Length, Tag);
@@ -1200,5 +1215,6 @@ PreservedAnalyses GPUSanPass::run(Module &M, ModuleAnalysisManager &AM) {
   if (!Lowerer.instrument())
     return PreservedAnalyses::all();
   LLVM_DEBUG(M.dump());
+  // M.dump();
   return PreservedAnalyses::none();
 }
