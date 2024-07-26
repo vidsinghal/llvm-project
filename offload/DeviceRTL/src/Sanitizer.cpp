@@ -375,6 +375,32 @@ ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::GLOBAL) *
+    ompx_check_with_base_global_vec(
+        _AS_PTR(void, AllocationKind::GLOBAL) * Pointers,
+        _AS_PTR(void, AllocationKind::GLOBAL) * Starts, uint64_t *Lengths,
+        uint32_t *Tags, uint64_t *Sizes, uint64_t *AccessIds,
+        int64_t *SourceIds, uint64_t PC, uint64_t ArraySize) {
+
+  for (int Index = 0; Index < ArraySize; Index++) {
+    _AS_PTR(void, AllocationKind::GLOBAL) P = Pointers[Index];
+    _AS_PTR(void, AllocationKind::GLOBAL) Start = Starts[Index];
+    uint64_t Length = Lengths[Index];
+    uint32_t Tag = Tags[Index];
+    uint64_t Size = Sizes[Index];
+    uint64_t AccessId = AccessIds[Index];
+    uint64_t SourceId = SourceIds[Index];
+
+    _AS_PTR(void, AllocationKind::GLOBAL)
+    Ptr = AllocationTracker<AllocationKind::GLOBAL>::checkWithBase(
+        P, Start, Length, Tag, Size, AccessId, SourceId, PC);
+    Pointers[Index] = Ptr;
+  }
+
+  return Pointers;
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::LOCAL)
     ompx_unpack_local(_AS_PTR(void, AllocationKind::LOCAL) P,
                       int64_t SourceId) {
