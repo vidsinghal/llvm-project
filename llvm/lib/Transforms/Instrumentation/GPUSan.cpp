@@ -900,7 +900,6 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     // Set the current operand from the result of the sanitization call.
     Index = 0;
     for (auto *I : InstructionsFromBase) {
-      Value *Zero = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
       Value *ValueIndex = ConstantInt::get(Type::getInt32Ty(Ctx), Index);
       Value *GEPForLoad = IRB.CreateGEP(CB->getType(), CB, {ValueIndex});
       LoadInst *Load = IRB.CreateLoad(PtrTy, GEPForLoad);
@@ -967,9 +966,8 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     // Set the current operand from the result of the sanitization call.
     Index = 0;
     for (Instruction *I : InstructionsWithoutBase) {
-      Value *Zero = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
       Value *ValueIndex = ConstantInt::get(Type::getInt32Ty(Ctx), Index);
-      Value *GEPForLoad = IRB.CreateGEP(CB->getType(), CB, {Zero, ValueIndex});
+      Value *GEPForLoad = IRB.CreateGEP(CB->getType(), CB, {ValueIndex});
       LoadInst *Load = IRB.CreateLoad(PtrTy, GEPForLoad);
       int PtrIdx = PtrIdxList[Index];
       Value *PtrOp = PtrOps[Index];
