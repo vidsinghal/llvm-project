@@ -1347,6 +1347,9 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
     SmallVector<CallInst *> Calls;
     SmallVector<GetElementPtrInst *> GEPs;
 
+    SmallVector<StoreInst *> Stores;
+    SmallVector<LoadInst *> Loads;
+
     for (auto I = BB->begin(); I != BB->end(); I++) {
 
       switch (I->getOpcode()) {
@@ -1358,10 +1361,12 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
       }
       case Instruction::Load:
         LoadsStores.push_back(&*I);
+        Loads.push_back(cast<LoadInst>(&*I));
         Changed = true;
         break;
       case Instruction::Store:
         LoadsStores.push_back(&*I);
+        Stores.push_back(cast<StoreInst>(&*I));
         Changed = true;
         break;
       case Instruction::GetElementPtr:
@@ -1408,7 +1413,26 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
       Inst->moveAfter(LatestDependency);
     }
 
-    instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
+    bool CanMergeChecks = true;
+    for (auto *GEP : GEPs) {
+
+      if (GEP->comesBefore(LoadsStores.front())) {
+        CanMergeChecks = CanMergeChecks && true;
+      } else {
+        CanMergeChecks = CanMergeChecks && false;
+      }
+    }
+
+    // check if you can merge various pointer checks.
+    if (CanMergeChecks) {
+      instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
+    } else {
+      for (auto *Load : Loads)
+        instrumentLoadInst(LI, *Load);
+      for (auto *Store : Stores)
+        instrumentStoreInst(LI, *Store);
+    }
+
     for (auto *GEP : GEPs)
       instrumentGEPInst(LI, *GEP);
     for (auto *Call : Calls)
