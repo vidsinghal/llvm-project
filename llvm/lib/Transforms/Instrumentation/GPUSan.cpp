@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Instrumentation/GPUSan.h"
-
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/STLExtras.h"
@@ -19,6 +18,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
@@ -45,10 +45,9 @@
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include "llvm/Transforms/Utils/ScalarEvolutionExpander.h"
 #include <cstdint>
 #include <optional>
-#include "llvm/Analysis/ScalarEvolutionExpressions.h"
-#include "llvm/Analysis/ScalarEvolution.h"
 
 using namespace llvm;
 
@@ -170,12 +169,15 @@ private:
                               PtrOrigin PO);
   Value *instrumentAllocaInst(LoopInfo &LI, AllocaInst &AI);
   void instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
-                        Type &AccessTy, bool IsRead, SmallVector<GetElementPtrInst *> &GEPs);
+                        Type &AccessTy, bool IsRead,
+                        SmallVector<GetElementPtrInst *> &GEPs);
   void instrumentMultipleAccessPerBasicBlock(
       LoopInfo &LI,
       SmallVector<Instruction *> &AccessCausingInstructionInABasicBlock);
-  void instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI, SmallVector<GetElementPtrInst *> &GEPs);
-  void instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI, SmallVector<GetElementPtrInst *> &GEPs);
+  void instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI,
+                          SmallVector<GetElementPtrInst *> &GEPs);
+  void instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI,
+                           SmallVector<GetElementPtrInst *> &GEPs);
   void instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP);
   bool instrumentCallInst(LoopInfo &LI, CallInst &CI);
   void
@@ -916,7 +918,8 @@ Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
 }
 
 void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
-                                  Type &AccessTy, bool IsRead, SmallVector<GetElementPtrInst *> &GEPs) {
+                                  Type &AccessTy, bool IsRead,
+                                  SmallVector<GetElementPtrInst *> &GEPs) {
   Value *PtrOp = I.getOperand(PtrIdx);
   const Value *Object = nullptr;
   PtrOrigin PO = getPtrOrigin(LI, PtrOp, &Object);
@@ -945,85 +948,83 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
   }
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
-      auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
-      auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
-      const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
-      SmallVector<const SCEVPredicate *, 4> Preds;
-      SmallPtrSet< const SCEVPredicate *, 4> PredsSet;
-      for (auto *Pred : Preds)
-        PredsSet.insert(Pred);
-      auto *Ex = SE.getPredicatedBackedgeTakenCount(L, Preds);
 
-      errs() << "Loop Disposition: " << LD << "\n";
-      errs() << "ABS Expression: " << SE.getSmallConstantTripCount(L) << "\n";
-      const SCEVAddRecExpr *AR = SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
+    auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
+    auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
+    const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
 
-      const SCEV *ScStart = AR->getStart();
-      const SCEV *ScEnd = AR->evaluateAtIteration(Ex, SE);
-      const SCEV *Step = AR->getStepRecurrence(SE);
+    SmallVector<const SCEVPredicate *, 4> Preds;
+    SmallPtrSet<const SCEVPredicate *, 4> PredsSet;
 
-    // // For expressions with negative step, the upper bound is ScStart and the
-    // // lower bound is ScEnd.
-    if (const SCEVConstant *CStep = dyn_cast<const SCEVConstant>(Step)) {
-      if (CStep->getValue()->isNegative())
+    for (auto *Pred : Preds)
+      PredsSet.insert(Pred);
+
+    auto *BackEdges = SE.getPredicatedBackedgeTakenCount(L, Preds);
+    const SCEVAddRecExpr *AddRecExpr =
+        SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
+
+    const SCEV *ScStart = AddRecExpr->getStart();
+    const SCEV *ScEnd = AddRecExpr->evaluateAtIteration(BackEdges, SE);
+    const SCEV *Step = AddRecExpr->getStepRecurrence(SE);
+
+    if (const SCEVConstant *ConstStep = dyn_cast<const SCEVConstant>(Step)) {
+      if (ConstStep->getValue()->isNegative()) {
         std::swap(ScStart, ScEnd);
       } else {
-      // Fallback case: the step is not constant, but the we can still
-      // get the upper and lower bounds of the interval by using min/max
-      // expressions.
-      ScStart = SE.getUMinExpr(ScStart, ScEnd);
-      ScEnd = SE.getUMaxExpr(AR->getStart(), ScEnd);
+        ScStart = SE.getUMinExpr(ScStart, ScEnd);
+        ScEnd = SE.getUMaxExpr(AddRecExpr->getStart(), ScEnd);
+      }
     }
 
-    errs() << "SC step: " << *Step << "\n";
-    errs() << "Sc start: " << *ScStart << "\n";
-    errs() << "Sc end: " << *ScEnd << "\n";
-    ScEnd->print(errs());
-    errs() << "\n";
-    ScEnd->dump();
-    errs() << "\n";
-    
-    ArrayRef< const SCEV * > Ops = ScEnd->operands();
-    errs() << "\n";
-    for (auto *Op : Ops){
-      errs() << "Operand: " << *Op << "\n";
-      errs() << "Operand Scev Type: " << Op->getSCEVType() << "\n";
-      errs() << "Operand Type: " << *Op->getType() << "\n";
-    }
-    errs() << "\n";
-    
-    errs() << "Scev Type: " << ScEnd->getSCEVType() << "\n";
-    errs() << "Type: " << *ScEnd->getType() << "\n";
-    errs() << "Is Non Constant Negative: " << ScEnd->isNonConstantNegative() << "\n";
-    errs() << "PtrOp: " << *PtrOp  << "\n";
+    ArrayRef<const SCEV *> Operands = ScEnd->operands();
+    // Assumption: If size of operands is two, it can be decomposed as
+    //  Base Offset and start ptr.
+    if (Operands.size() == 2) {
+      const SCEV *First = Operands[0];
+      const SCEV *Second = Operands[1];
 
-    if (Ops.size() == 2){
-      const SCEV *First = Ops[0];
-      //Ideally I want to get this from the SCEV analysis but there const to non-const seems to be an issue. 
-      GetElementPtrInst *PointerOpGEP = cast<GetElementPtrInst>(PtrOp);
-      Value *BasePointer = PointerOpGEP->getPointerOperand();
-
-      errs() << "Print Base Pointer Op: " << *BasePointer << "\n";
-      
       const SCEVConstant *SC = dyn_cast<SCEVConstant>(First);
-      ConstantInt *OffsetValue = SC->getValue();
-      errs() << "Constant Int value " << *OffsetValue << "\n";  
+      if (!SC)
+        goto handleunhoistable;
 
-      //Create GEP
-      Value *GEPOutsideBB= IRB.CreateGEP(BasePointer->getType(), BasePointer, {OffsetValue});
+      const SCEVConstant *StepConst = dyn_cast<SCEVConstant>(Step);
+      if (!StepConst)
+        goto handleunhoistable;
 
-      GetElementPtrInst* GEPInst = dyn_cast<GetElementPtrInst>(GEPOutsideBB);
+      const SCEVUnknown *SU = dyn_cast<SCEVUnknown>(Second);
+      if (!SU)
+        goto handleunhoistable;
+        
+      Value *BasePointer = SU->getValue();
+      ConstantInt *BytesValue = SC->getValue();
+      ConstantInt *StepValue = StepConst->getValue(); 
+
+      uint64_t OffsetInt =
+          BytesValue->getZExtValue() / StepValue->getZExtValue();
+      ConstantInt *OffsetValue = ConstantInt::get(Ctx, APInt(64, OffsetInt));
+      Value *GEPOutsideBB =
+          IRB.CreateGEP(BasePointer->getType(), BasePointer, {OffsetValue});
+      
+      GetElementPtrInst *GEPInst = dyn_cast<GetElementPtrInst>(GEPOutsideBB);
+      if (!GEPInst)
+        goto handleunhoistable;
+
       GEPs.push_back(GEPInst);
+
       Instruction *BasePointerInst = dyn_cast<Instruction>(BasePointer);
+      if (!BasePointerInst)
+        goto handleunhoistable;
 
       GetElementPtrInst *GEPToRemove = dyn_cast<GetElementPtrInst>(PtrOp);
+      if (!GEPToRemove)
+        goto handleunhoistable;
+
       auto It = std::find(GEPs.begin(), GEPs.end(), GEPToRemove);
-      if (It != GEPs.end()){
+      if (It != GEPs.end())
         GEPs.erase(It);
-      }
-      
+
       GEPInst->removeFromParent();
-      auto *BB= BasePointerInst->getParent();
+      auto *BB = BasePointerInst->getParent();
       auto Terminator = BB->end();
       GEPInst->insertInto(BB, --Terminator);
 
@@ -1035,69 +1036,65 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
       assert(!TySize.isScalable());
       Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
 
-      Value *PlainPtrOp = IRB.CreatePointerBitCastOrAddrSpaceCast(GEPInst, getPtrTy(PO));
+      Value *PlainPtrOp =
+          IRB.CreatePointerBitCastOrAddrSpaceCast(GEPInst, getPtrTy(PO));
+      Instruction *OpInst = dyn_cast<Instruction>(PlainPtrOp);
+      if (!OpInst)
+        goto handleunhoistable;
 
-      errs() << "Print Plain Ptr Op: " << *PlainPtrOp << "\n";
-       
-      Instruction *OpInst = dyn_cast<Instruction>(PlainPtrOp); 
       CallInst *CB;
       Value *PCVal = getPC(IRB);
       Instruction *PCInst = dyn_cast<Instruction>(PCVal);
       PCInst->removeFromParent();
       PCInst->insertBefore(OpInst);
+
       if (Start) {
-          CB = createCall(IRB, getCheckWithBaseFn(PO),
-                    {PlainPtrOp, Start, Length, Tag, Size,
-                     ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
-                     PCInst},
-                    I.getName() + ".san");
+        CB = createCall(IRB, getCheckWithBaseFn(PO),
+                        {PlainPtrOp, Start, Length, Tag, Size,
+                         ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
+                         PCInst},
+                        I.getName() + ".san");
       } else {
-          CB = createCall(IRB, getCheckFn(PO),
-                    {PlainPtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
-                     getSourceIndex(I), PCInst},
-                    I.getName() + ".san");
+        CB = createCall(IRB, getCheckFn(PO),
+                        {PlainPtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
+                         getSourceIndex(I), PCInst},
+                        I.getName() + ".san");
       }
-      
+
       CB->removeFromParent();
       CB->insertAfter(OpInst);
-
-      // I.setOperand(PtrIdx,
-      //          IRB.CreatePointerBitCastOrAddrSpaceCast(CB, PtrOp->getType()));
-
     }
-      
-    }
-    else{
+  }
 
-      static int32_t ReadAccessId = -1;
-      static int32_t WriteAccessId = 1;
-      const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
+handleunhoistable:
 
-      auto TySize = DL.getTypeStoreSize(&AccessTy);
-      assert(!TySize.isScalable());
-      Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
+  static int32_t ReadAccessId = -1;
+  static int32_t WriteAccessId = 1;
+  const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
 
-      Value *PlainPtrOp = IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+  auto TySize = DL.getTypeStoreSize(&AccessTy);
+  assert(!TySize.isScalable());
+  Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
 
-      errs() << "Print Plain Ptr Op: " << *PlainPtrOp << "\n";
+  Value *PlainPtrOp =
+      IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
 
-      CallInst *CB;
-      if (Start) {
-            CB = createCall(IRB, getCheckWithBaseFn(PO),
+  CallInst *CB;
+  if (Start) {
+    CB = createCall(IRB, getCheckWithBaseFn(PO),
                     {PlainPtrOp, Start, Length, Tag, Size,
                      ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
                      getPC(IRB)},
                     I.getName() + ".san");
-      } else {
-          CB = createCall(IRB, getCheckFn(PO),
+  } else {
+    CB = createCall(IRB, getCheckFn(PO),
                     {PlainPtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
                      getSourceIndex(I), getPC(IRB)},
                     I.getName() + ".san");
-      }
+  }
 
-      I.setOperand(PtrIdx,
+  I.setOperand(PtrIdx,
                IRB.CreatePointerBitCastOrAddrSpaceCast(CB, PtrOp->getType()));
-    }
 }
 
 void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
@@ -1168,54 +1165,56 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
       const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
       SmallVector<const SCEVPredicate *, 4> Preds;
-      SmallPtrSet< const SCEVPredicate *, 4> PredsSet;
+      SmallPtrSet<const SCEVPredicate *, 4> PredsSet;
       for (auto *Pred : Preds)
         PredsSet.insert(Pred);
       auto *Ex = SE.getPredicatedBackedgeTakenCount(L, Preds);
 
       errs() << "Loop Disposition: " << LD << "\n";
       errs() << "ABS Expression: " << SE.getSmallConstantTripCount(L) << "\n";
-      const SCEVAddRecExpr *AR = SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
+      const SCEVAddRecExpr *AR =
+          SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
 
       const SCEV *ScStart = AR->getStart();
       const SCEV *ScEnd = AR->evaluateAtIteration(Ex, SE);
       const SCEV *Step = AR->getStepRecurrence(SE);
 
-    // // For expressions with negative step, the upper bound is ScStart and the
-    // // lower bound is ScEnd.
-    if (const SCEVConstant *CStep = dyn_cast<const SCEVConstant>(Step)) {
-      if (CStep->getValue()->isNegative())
-        std::swap(ScStart, ScEnd);
+      // // For expressions with negative step, the upper bound is ScStart and
+      // the
+      // // lower bound is ScEnd.
+      if (const SCEVConstant *CStep = dyn_cast<const SCEVConstant>(Step)) {
+        if (CStep->getValue()->isNegative())
+          std::swap(ScStart, ScEnd);
       } else {
-      // Fallback case: the step is not constant, but the we can still
-      // get the upper and lower bounds of the interval by using min/max
-      // expressions.
-      ScStart = SE.getUMinExpr(ScStart, ScEnd);
-      ScEnd = SE.getUMaxExpr(AR->getStart(), ScEnd);
-    }
+        // Fallback case: the step is not constant, but the we can still
+        // get the upper and lower bounds of the interval by using min/max
+        // expressions.
+        ScStart = SE.getUMinExpr(ScStart, ScEnd);
+        ScEnd = SE.getUMaxExpr(AR->getStart(), ScEnd);
+      }
 
-    errs() << "SC step: " << *Step << "\n";
-    errs() << "Sc start: " << *ScStart << "\n";
-    errs() << "Sc end: " << *ScEnd << "\n";
-    ScEnd->print(errs());
-    errs() << "\n";
-    ScEnd->dump();
-    errs() << "\n";
-    
-    ArrayRef< const SCEV * > Ops = ScEnd->operands();
-    errs() << "\n";
-    for (auto *Op : Ops){
-      errs() << "Operand: " << *Op << "\n";
-      errs() << "Operand Scev Type: " << Op->getSCEVType() << "\n";
-      errs() << "Operand Type: " << *Op->getType() << "\n";
-    }
-    errs() << "\n";
-    
-    errs() << "Scev Type: " << ScEnd->getSCEVType() << "\n";
-    errs() << "Type: " << *ScEnd->getType() << "\n";
-    errs() << "Is Non Constant Negative: " << ScEnd->isNonConstantNegative() << "\n";
-    errs() << "PtrOp: " << *PtrOp  << "\n";
-      
+      errs() << "SC step: " << *Step << "\n";
+      errs() << "Sc start: " << *ScStart << "\n";
+      errs() << "Sc end: " << *ScEnd << "\n";
+      ScEnd->print(errs());
+      errs() << "\n";
+      ScEnd->dump();
+      errs() << "\n";
+
+      ArrayRef<const SCEV *> Ops = ScEnd->operands();
+      errs() << "\n";
+      for (auto *Op : Ops) {
+        errs() << "Operand: " << *Op << "\n";
+        errs() << "Operand Scev Type: " << Op->getSCEVType() << "\n";
+        errs() << "Operand Type: " << *Op->getType() << "\n";
+      }
+      errs() << "\n";
+
+      errs() << "Scev Type: " << ScEnd->getSCEVType() << "\n";
+      errs() << "Type: " << *ScEnd->getType() << "\n";
+      errs() << "Is Non Constant Negative: " << ScEnd->isNonConstantNegative()
+             << "\n";
+      errs() << "PtrOp: " << *PtrOp << "\n";
     }
 
     static int32_t ReadAccessId = -1;
@@ -1445,15 +1444,18 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
   }
 }
 
-void GPUSanImpl::instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI, SmallVector<GetElementPtrInst *> &GEPs) {
+void GPUSanImpl::instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI,
+                                    SmallVector<GetElementPtrInst *> &GEPs) {
   instrumentAccess(LI, LoadI, LoadInst::getPointerOperandIndex(),
                    *LoadI.getType(),
                    /*IsRead=*/true, GEPs);
 }
 
-void GPUSanImpl::instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI, SmallVector<GetElementPtrInst *> &GEPs) {
+void GPUSanImpl::instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI,
+                                     SmallVector<GetElementPtrInst *> &GEPs) {
   instrumentAccess(LI, StoreI, StoreInst::getPointerOperandIndex(),
-                   *StoreI.getValueOperand()->getType(), /*IsRead=*/false, GEPs);
+                   *StoreI.getValueOperand()->getType(), /*IsRead=*/false,
+                   GEPs);
 }
 
 void GPUSanImpl::instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP) {
@@ -1600,13 +1602,13 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
     // }
 
     // check if you can merge various pointer checks.
-    //if (CanMergeChecks) {
+    // if (CanMergeChecks) {
     //  instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
     //} else {
-      for (auto *Load : Loads)
-        instrumentLoadInst(LI, *Load, GEPs);
-      for (auto *Store : Stores)
-        instrumentStoreInst(LI, *Store, GEPs);
+    for (auto *Load : Loads)
+      instrumentLoadInst(LI, *Load, GEPs);
+    for (auto *Store : Stores)
+      instrumentStoreInst(LI, *Store, GEPs);
     //}
 
     for (auto *GEP : GEPs)
