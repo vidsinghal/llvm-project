@@ -288,6 +288,22 @@ private:
                          });
   }
 
+  FunctionCallee getCheckWithRangeGlobal() {
+    return getOrCreateFn(CheckGlobalRangeFn[0], "ompx_check_global_range",
+                         Type::getVoidTy(Ctx),
+                         {
+                             PtrTy,   /*SCEV max computed address*/
+                             PtrTy,   /*SCEV min computed address*/
+                             PtrTy,   /*Start of allocation address*/
+                             Int64Ty, /*Size of allocation, i.e. Length*/
+                             Int32Ty, /*Tag*/
+                             Int64Ty, /*Size of the type that is loaded/stored*/
+                             Int64Ty, /*AccessId, Read/Write*/
+                             Int64Ty, /*SourceId, Allocation source ID*/
+                             Int64Ty  /*PC -- Program Counter*/
+                         });
+  }
+
   FunctionCallee getAllocationInfoFn(PtrOrigin PO) {
     assert(PO >= LOCAL && PO <= GLOBAL && "Origin does not need handling.");
     if (auto *F = M.getFunction("ompx_get_allocation_info" + getSuffix(PO)))
@@ -348,6 +364,11 @@ private:
   IntegerType *Int32Ty = Type::getInt32Ty(Ctx);
   IntegerType *Int64Ty = Type::getInt64Ty(Ctx);
 
+  // Create an 8-bit integer type
+  Type *Int8Type = llvm::Type::getInt8Ty(Ctx);
+  // Create a pointer to the 8-bit integer type
+  Type *Int8PtrType = llvm::PointerType::get(Int8Type, 0);
+
   const DataLayout &DL = M.getDataLayout();
 
   FunctionCallee NewFn[3];
@@ -363,6 +384,7 @@ private:
   FunctionCallee LifetimeStartFn;
   FunctionCallee FreeNLocalFn;
   FunctionCallee ThreadIDFn;
+  FunctionCallee CheckGlobalRangeFn[1];
 
   StringMap<Value *> GlobalStringMap;
   struct AllocationInfoTy {
@@ -949,7 +971,16 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
 
+    // goto handleunhoistable;
+
+    // TODO: handle for Local access also.
+    if (PO != GLOBAL)
+      goto handleunhoistable;
+
+    BasicBlock *CurrentBasicBlock = I.getParent();
+
     auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
+    SCEVExpander Expander = SCEVExpander(SE, DL, "SCEVExpander");
     auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
     const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
 
@@ -967,103 +998,112 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     const SCEV *ScEnd = AddRecExpr->evaluateAtIteration(BackEdges, SE);
     const SCEV *Step = AddRecExpr->getStepRecurrence(SE);
 
-    if (const SCEVConstant *ConstStep = dyn_cast<const SCEVConstant>(Step)) {
-      if (ConstStep->getValue()->isNegative()) {
-        std::swap(ScStart, ScEnd);
-      } else {
-        ScStart = SE.getUMinExpr(ScStart, ScEnd);
-        ScEnd = SE.getUMaxExpr(AddRecExpr->getStart(), ScEnd);
-      }
+    // if (const SCEVConstant *ConstStep = dyn_cast<const SCEVConstant>(Step)) {
+    //   if (ConstStep->getValue()->isNegative()) {
+    //     std::swap(ScStart, ScEnd);
+    //   } else {
+    //     ScStart = SE.getUMinExpr(ScStart, ScEnd);
+    //     ScEnd = SE.getUMaxExpr(AddRecExpr->getStart(), ScEnd);
+    //   }
+    // }
+
+    // // print some debug data.
+    // errs() << "ScStart: " << *ScStart << "\n";
+    // errs() << "ScEnd: " << *ScEnd << "\n";
+    // errs() << "Step: "  << *Step << "\n";
+
+    if (!Expander.isSafeToExpand(ScStart))
+      goto handleunhoistable;
+
+    if (!Expander.isSafeToExpand(ScEnd))
+      goto handleunhoistable;
+
+    // We need to find a suitable Insert Point.
+    // Assumption: Current loop has one unique predecessor
+    // We can insert at the end of the basic block if it
+    // is not a branch instruction.
+    BasicBlock *ParentLoop = L->getLoopPredecessor();
+
+    // If there is not one unique predecessor, for now give up
+    //  hoisting the check out of the loop.
+    if (!ParentLoop)
+      goto handleunhoistable;
+
+    // Get handle to last instruction.
+    auto LoopEnd = --(ParentLoop->end());
+    Instruction *LoopEndInst = &*LoopEnd;
+
+    Type *Int64Ty = Type::getInt64Ty(Ctx);
+    Value *LowerBoundCode =
+        Expander.expandCodeFor(ScStart, Int8PtrType, LoopEnd);
+
+    LoopEnd = --(ParentLoop->end());
+    Value *UpperBoundCode = Expander.expandCodeFor(ScEnd, Int8PtrType, LoopEnd);
+
+    static int32_t ReadAccessId = -1;
+    static int32_t WriteAccessId = 1;
+    const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
+
+    auto TySize = DL.getTypeStoreSize(&AccessTy);
+    assert(!TySize.isScalable());
+    Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
+
+    LoopEnd = --(ParentLoop->end());
+    CallInst *CB;
+    Value *PCVal = getPC(IRB);
+    Instruction *PCInst = dyn_cast<Instruction>(PCVal);
+    if (!PCInst)
+      return;
+
+    Value *AccessIDVal = ConstantInt::get(Int64Ty, AccessId);
+    PCInst->removeFromParent();
+    PCInst->insertBefore(&*LoopEnd);
+    auto Callee = getCheckWithRangeGlobal();
+
+    // // print some debug data.
+    // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";
+
+    // errs() << *UpperBoundCode->getType() << "\n";
+    // errs() << *LowerBoundCode->getType() << "\n";
+    // errs() << *Start->getType() << "\n";
+    // errs() << *Length->getType() << "\n";
+    // errs() << *Tag->getType() << "\n";
+    // errs() << *Size->getType() << "\n";
+    // errs() << *AccessIDVal->getType() << "\n";
+    // errs() << *PCVal->getType() << "\n";
+
+    if (Start) {
+      CB = createCall(IRB, Callee,
+                      {UpperBoundCode, LowerBoundCode, Start, Length, Tag, Size,
+                       AccessIDVal, getSourceIndex(I), PCVal});
+    } else {
+      CB = createCall(IRB, Callee,
+                      {UpperBoundCode, LowerBoundCode, Start, Length, Tag, Size,
+                       AccessIDVal, getSourceIndex(I), PCVal});
     }
+    CB->removeFromParent();
+    CB->insertAfter(PCInst);
 
-    ArrayRef<const SCEV *> Operands = ScEnd->operands();
-    // Assumption: If size of operands is two, it can be decomposed as
-    //  Base Offset and start ptr.
-    if (Operands.size() == 2) {
-      const SCEV *First = Operands[0];
-      const SCEV *Second = Operands[1];
+    // Still need to get the real pointer from the pointer op.
+    // Convert fake pointer to real pointer.
+    Value *PlainPtrOp =
+        IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+    auto *CBUnpack = createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+                                PtrOp->getName() + ".unpack");
 
-      const SCEVConstant *SC = dyn_cast<SCEVConstant>(First);
-      if (!SC)
-        goto handleunhoistable;
+    I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
+                             CBUnpack, PtrOp->getType()));
 
-      const SCEVConstant *StepConst = dyn_cast<SCEVConstant>(Step);
-      if (!StepConst)
-        goto handleunhoistable;
+    return;
 
-      const SCEVUnknown *SU = dyn_cast<SCEVUnknown>(Second);
-      if (!SU)
-        goto handleunhoistable;
-        
-      Value *BasePointer = SU->getValue();
-      ConstantInt *BytesValue = SC->getValue();
-      ConstantInt *StepValue = StepConst->getValue(); 
+    // // print some debug info data
+    // for (auto It = CB->arg_begin(); It != CB->arg_end(); It++){
+    //   auto *Op = &*It;
+    //   if (Value *ValOp = dyn_cast<Value>(Op))
+    //     errs() << "Print Val Type: " << *ValOp << "\n";
+    // }
 
-      uint64_t OffsetInt =
-          BytesValue->getZExtValue() / StepValue->getZExtValue();
-      ConstantInt *OffsetValue = ConstantInt::get(Ctx, APInt(64, OffsetInt));
-      Value *GEPOutsideBB =
-          IRB.CreateGEP(BasePointer->getType(), BasePointer, {OffsetValue});
-      
-      GetElementPtrInst *GEPInst = dyn_cast<GetElementPtrInst>(GEPOutsideBB);
-      if (!GEPInst)
-        goto handleunhoistable;
-
-      GEPs.push_back(GEPInst);
-
-      Instruction *BasePointerInst = dyn_cast<Instruction>(BasePointer);
-      if (!BasePointerInst)
-        goto handleunhoistable;
-
-      GetElementPtrInst *GEPToRemove = dyn_cast<GetElementPtrInst>(PtrOp);
-      if (!GEPToRemove)
-        goto handleunhoistable;
-
-      auto It = std::find(GEPs.begin(), GEPs.end(), GEPToRemove);
-      if (It != GEPs.end())
-        GEPs.erase(It);
-
-      GEPInst->removeFromParent();
-      auto *BB = BasePointerInst->getParent();
-      auto Terminator = BB->end();
-      GEPInst->insertInto(BB, --Terminator);
-
-      static int32_t ReadAccessId = -1;
-      static int32_t WriteAccessId = 1;
-      const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
-
-      auto TySize = DL.getTypeStoreSize(&AccessTy);
-      assert(!TySize.isScalable());
-      Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
-
-      Value *PlainPtrOp =
-          IRB.CreatePointerBitCastOrAddrSpaceCast(GEPInst, getPtrTy(PO));
-      Instruction *OpInst = dyn_cast<Instruction>(PlainPtrOp);
-      if (!OpInst)
-        goto handleunhoistable;
-
-      CallInst *CB;
-      Value *PCVal = getPC(IRB);
-      Instruction *PCInst = dyn_cast<Instruction>(PCVal);
-      PCInst->removeFromParent();
-      PCInst->insertBefore(OpInst);
-
-      if (Start) {
-        CB = createCall(IRB, getCheckWithBaseFn(PO),
-                        {PlainPtrOp, Start, Length, Tag, Size,
-                         ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
-                         PCInst},
-                        I.getName() + ".san");
-      } else {
-        CB = createCall(IRB, getCheckFn(PO),
-                        {PlainPtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
-                         getSourceIndex(I), PCInst},
-                        I.getName() + ".san");
-      }
-
-      CB->removeFromParent();
-      CB->insertAfter(OpInst);
-    }
+    // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";
   }
 
 handleunhoistable:

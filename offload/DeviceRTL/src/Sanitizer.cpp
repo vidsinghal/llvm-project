@@ -169,6 +169,57 @@ template <AllocationKind AK> struct AllocationTracker {
     return utils::advancePtr(Start, Offset);
   }
 
+  [[clang::disable_sanitizer_instrumentation]] static void
+  checkRange(_AS_PTR(void, AK) SCEVMax, _AS_PTR(void, AK) SCEVMin,
+             _AS_PTR(void, AK) StartAddress, int64_t AllocationLength,
+             uint32_t Tag, int64_t AccessTypeSize, int64_t AccessId,
+             int64_t SourceId, uint64_t PC) {
+
+    AllocationPtrTy<AK> APSCEVMax = AllocationPtrTy<AK>::get(SCEVMax);
+    AllocationPtrTy<AK> APSCEVMin = AllocationPtrTy<AK>::get(SCEVMin);
+    if constexpr (AK == AllocationKind::GLOBAL)
+      if (APSCEVMax.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+        __sanitizer_trap_info_ptr->garbagePointer<AK>(
+            APSCEVMax, (void *)SCEVMax, SourceId, PC);
+
+    if (APSCEVMin.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+      __sanitizer_trap_info_ptr->garbagePointer<AK>(APSCEVMin, (void *)SCEVMin,
+                                                    SourceId, PC);
+
+    int64_t MaxOffset = APSCEVMax.Offset;
+    int64_t MinOffset = APSCEVMin.Offset;
+    if (OMP_UNLIKELY(MaxOffset > AllocationLength - AccessTypeSize ||
+                     (SanitizerConfig<AK>::useTags() &&
+                      Tag != APSCEVMax.AllocationTag))) {
+      __sanitizer_trap_info_ptr->accessError<AK>(APSCEVMax, AccessTypeSize,
+                                                 AccessId, SourceId, PC);
+    }
+
+    AllocationPtrTy<AK> AllocationStart =
+        AllocationPtrTy<AK>::get(StartAddress);
+    int AllocationStartOffset = AllocationStart.Offset;
+    if (OMP_UNLIKELY(MinOffset < AllocationStartOffset ||
+                     (SanitizerConfig<AK>::useTags() &&
+                      Tag != APSCEVMin.AllocationTag))) {
+      __sanitizer_trap_info_ptr->accessError<AK>(APSCEVMin, AccessTypeSize,
+                                                 AccessId, SourceId, PC);
+    }
+  }
+
+  [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+    gnu::used, gnu::retain]] void
+  ompx_check_global_range(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
+                          _AS_PTR(void, AllocationKind::GLOBAL) SCEVMin,
+                          _AS_PTR(void, AllocationKind::GLOBAL) StartAddress,
+                          int64_t AllocationLength, uint32_t Tag,
+                          int64_t AccessTypeSize, int64_t AccessId,
+                          int64_t SourceId, uint64_t PC) {
+
+    return AllocationTracker<AllocationKind::GLOBAL>::checkRange(
+        SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
+        AccessId, SourceId, PC);
+  }
+
   [[clang::disable_sanitizer_instrumentation]] static _AS_PTR(void, AK)
       check(_AS_PTR(void, AK) P, int64_t Size, int64_t AccessId,
             int64_t SourceId, uint64_t PC) {
