@@ -994,6 +994,9 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     const SCEVAddRecExpr *AddRecExpr =
         SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
 
+    if (!AddRecExpr)
+      goto handleunhoistable;
+
     const SCEV *ScStart = AddRecExpr->getStart();
     const SCEV *ScEnd = AddRecExpr->evaluateAtIteration(BackEdges, SE);
     const SCEV *Step = AddRecExpr->getStepRecurrence(SE);

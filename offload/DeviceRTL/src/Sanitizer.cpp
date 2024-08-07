@@ -206,20 +206,6 @@ template <AllocationKind AK> struct AllocationTracker {
     }
   }
 
-  [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
-    gnu::used, gnu::retain]] void
-  ompx_check_global_range(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
-                          _AS_PTR(void, AllocationKind::GLOBAL) SCEVMin,
-                          _AS_PTR(void, AllocationKind::GLOBAL) StartAddress,
-                          int64_t AllocationLength, uint32_t Tag,
-                          int64_t AccessTypeSize, int64_t AccessId,
-                          int64_t SourceId, uint64_t PC) {
-
-    return AllocationTracker<AllocationKind::GLOBAL>::checkRange(
-        SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
-        AccessId, SourceId, PC);
-  }
-
   [[clang::disable_sanitizer_instrumentation]] static _AS_PTR(void, AK)
       check(_AS_PTR(void, AK) P, int64_t Size, int64_t AccessId,
             int64_t SourceId, uint64_t PC) {
@@ -508,6 +494,20 @@ ompx_leak_check() {
 [[gnu::weak, gnu::noinline, gnu::used, gnu::retain]] int64_t
 __san_get_location_value() {
   return -1;
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_global_range(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
+                        _AS_PTR(void, AllocationKind::GLOBAL) SCEVMin,
+                        _AS_PTR(void, AllocationKind::GLOBAL) StartAddress,
+                        int64_t AllocationLength, uint32_t Tag,
+                        int64_t AccessTypeSize, int64_t AccessId,
+                        int64_t SourceId, uint64_t PC) {
+
+  return AllocationTracker<AllocationKind::GLOBAL>::checkRange(
+      SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
+      AccessId, SourceId, PC);
 }
 }
 
