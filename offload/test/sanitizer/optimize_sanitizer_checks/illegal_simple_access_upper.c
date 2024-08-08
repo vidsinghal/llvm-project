@@ -7,11 +7,12 @@ typedef int IntTy;
 IntTy *foo(int Size) {
 
   IntTy *a;
+
   a = (IntTy *)malloc(sizeof(IntTy) * Size);
 
 #pragma omp target teams map(from : a [0:Size])
   {
-    for (IntTy I = 0; I < Size; I++) {
+    for (IntTy I = 0; I < Size + 1; I++) {
       a[I] = I;
     }
   }

@@ -42,7 +42,7 @@ void printProduct(Product *P, IntTy N) {
   IntTy *b = P->b;
   IntTy *c = P->c;
 
-  for (IntTy i = 0; i < N; i++) {
+  for (IntTy i = 1; i < N; i++) {
     printf("a: %d, b:%d, c:%d\n", a[i], b[i], c[i]);
   }
 }

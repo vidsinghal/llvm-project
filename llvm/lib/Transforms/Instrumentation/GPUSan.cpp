@@ -288,6 +288,22 @@ private:
                          });
   }
 
+  FunctionCallee getCheckWithRangeGlobalAddrSpaceCast() {
+    return getOrCreateFn(CheckGlobalRangeFn[0], "ompx_check_global_range",
+                         Type::getVoidTy(Ctx),
+                         {
+                             Int32ASPtrType, /*SCEV max computed address*/
+                             Int32ASPtrType, /*SCEV min computed address*/
+                             PtrTy,          /*Start of allocation address*/
+                             Int64Ty,        /*Size of allocation, i.e. Length*/
+                             Int32Ty,        /*Tag*/
+                             Int64Ty, /*Size of the type that is loaded/stored*/
+                             Int64Ty, /*AccessId, Read/Write*/
+                             Int64Ty, /*SourceId, Allocation source ID*/
+                             Int64Ty  /*PC -- Program Counter*/
+                         });
+  }
+
   FunctionCallee getCheckWithRangeGlobal() {
     return getOrCreateFn(CheckGlobalRangeFn[0], "ompx_check_global_range",
                          Type::getVoidTy(Ctx),
@@ -364,10 +380,9 @@ private:
   IntegerType *Int32Ty = Type::getInt32Ty(Ctx);
   IntegerType *Int64Ty = Type::getInt64Ty(Ctx);
 
-  // Create an 8-bit integer type
-  Type *Int8Type = llvm::Type::getInt8Ty(Ctx);
   // Create a pointer to the 8-bit integer type
-  Type *Int8PtrType = llvm::PointerType::get(Int8Type, 0);
+  Type *Int8PtrType = PointerType::get(Int8Ty, 0);
+  Type *Int32ASPtrType = PointerType::get(Int32Ty, 1);
 
   const DataLayout &DL = M.getDataLayout();
 
@@ -1037,11 +1052,10 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     Instruction *LoopEndInst = &*LoopEnd;
 
     Type *Int64Ty = Type::getInt64Ty(Ctx);
-    Value *LowerBoundCode =
-        Expander.expandCodeFor(ScStart, Int8PtrType, LoopEnd);
+    Value *LowerBoundCode = Expander.expandCodeFor(ScStart, nullptr, LoopEnd);
 
     LoopEnd = --(ParentLoop->end());
-    Value *UpperBoundCode = Expander.expandCodeFor(ScEnd, Int8PtrType, LoopEnd);
+    Value *UpperBoundCode = Expander.expandCodeFor(ScEnd, nullptr, LoopEnd);
 
     static int32_t ReadAccessId = -1;
     static int32_t WriteAccessId = 1;
@@ -1061,7 +1075,13 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     Value *AccessIDVal = ConstantInt::get(Int64Ty, AccessId);
     PCInst->removeFromParent();
     PCInst->insertBefore(&*LoopEnd);
-    auto Callee = getCheckWithRangeGlobal();
+
+    FunctionCallee Callee;
+    if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
+      Callee = getCheckWithRangeGlobalAddrSpaceCast();
+    } else {
+      Callee = getCheckWithRangeGlobal();
+    }
 
     // // print some debug data.
     // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";

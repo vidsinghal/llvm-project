@@ -15,6 +15,7 @@
 #include "Mapping.h"
 #include "Shared/Environment.h"
 #include "Synchronization.h"
+//#include "Shared/Debug.h"
 
 using namespace ompx;
 using namespace utils;
@@ -177,6 +178,10 @@ template <AllocationKind AK> struct AllocationTracker {
 
     AllocationPtrTy<AK> APSCEVMax = AllocationPtrTy<AK>::get(SCEVMax);
     AllocationPtrTy<AK> APSCEVMin = AllocationPtrTy<AK>::get(SCEVMin);
+    if constexpr (AK == AllocationKind::LOCAL)
+      if (AllocationLength == 0)
+        AllocationLength = getAllocation<AK>(APSCEVMax, AccessId, PC).Length;
+
     if constexpr (AK == AllocationKind::GLOBAL)
       if (APSCEVMax.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
         __sanitizer_trap_info_ptr->garbagePointer<AK>(
@@ -186,8 +191,8 @@ template <AllocationKind AK> struct AllocationTracker {
       __sanitizer_trap_info_ptr->garbagePointer<AK>(APSCEVMin, (void *)SCEVMin,
                                                     SourceId, PC);
 
+    // check upper bound
     int64_t MaxOffset = APSCEVMax.Offset;
-    int64_t MinOffset = APSCEVMin.Offset;
     if (OMP_UNLIKELY(MaxOffset > AllocationLength - AccessTypeSize ||
                      (SanitizerConfig<AK>::useTags() &&
                       Tag != APSCEVMax.AllocationTag))) {
@@ -195,10 +200,9 @@ template <AllocationKind AK> struct AllocationTracker {
                                                  AccessId, SourceId, PC);
     }
 
-    AllocationPtrTy<AK> AllocationStart =
-        AllocationPtrTy<AK>::get(StartAddress);
-    int AllocationStartOffset = AllocationStart.Offset;
-    if (OMP_UNLIKELY(MinOffset < AllocationStartOffset ||
+    // check lower bound
+    auto &AllocationOfMinOffset = getAllocation<AK>(APSCEVMin, AccessId, PC);
+    if (OMP_UNLIKELY(StartAddress != AllocationOfMinOffset.Start ||
                      (SanitizerConfig<AK>::useTags() &&
                       Tag != APSCEVMin.AllocationTag))) {
       __sanitizer_trap_info_ptr->accessError<AK>(APSCEVMin, AccessTypeSize,
