@@ -288,15 +288,23 @@ private:
                          });
   }
 
-  FunctionCallee getCheckWithRangeGlobalAddrSpaceCast() {
-    return getOrCreateFn(CheckGlobalRangeFn[0], "ompx_check_global_range",
+  FunctionCallee getCheckRangeWithBaseFn(PtrOrigin PO, bool UseAddrSpacePtrTy) {
+
+    Type *SCEVPointerType;
+    if (UseAddrSpacePtrTy)
+      SCEVPointerType = Int32ASPtrType;
+    else
+      SCEVPointerType = getPtrTy(PO);
+
+    return getOrCreateFn(CheckRangeWithBaseFn[PO],
+                         "ompx_check_range_with_base" + getSuffix(PO),
                          Type::getVoidTy(Ctx),
                          {
-                             Int32ASPtrType, /*SCEV max computed address*/
-                             Int32ASPtrType, /*SCEV min computed address*/
-                             PtrTy,          /*Start of allocation address*/
-                             Int64Ty,        /*Size of allocation, i.e. Length*/
-                             Int32Ty,        /*Tag*/
+                             SCEVPointerType, /*SCEV max computed address*/
+                             SCEVPointerType, /*SCEV min computed address*/
+                             getPtrTy(PO),    /*Start of allocation address*/
+                             Int64Ty, /*Size of allocation, i.e. Length*/
+                             Int32Ty, /*Tag*/
                              Int64Ty, /*Size of the type that is loaded/stored*/
                              Int64Ty, /*AccessId, Read/Write*/
                              Int64Ty, /*SourceId, Allocation source ID*/
@@ -304,15 +312,19 @@ private:
                          });
   }
 
-  FunctionCallee getCheckWithRangeGlobal() {
-    return getOrCreateFn(CheckGlobalRangeFn[0], "ompx_check_global_range",
+  FunctionCallee getCheckRangeFn(PtrOrigin PO, bool UseAddrSpacePtrTy) {
+
+    Type *SCEVPointerType;
+    if (UseAddrSpacePtrTy)
+      SCEVPointerType = Int32ASPtrType;
+    else
+      SCEVPointerType = getPtrTy(PO);
+
+    return getOrCreateFn(CheckRangeFn[PO], "ompx_check_range" + getSuffix(PO),
                          Type::getVoidTy(Ctx),
                          {
-                             PtrTy,   /*SCEV max computed address*/
-                             PtrTy,   /*SCEV min computed address*/
-                             PtrTy,   /*Start of allocation address*/
-                             Int64Ty, /*Size of allocation, i.e. Length*/
-                             Int32Ty, /*Tag*/
+                             SCEVPointerType, /*SCEV max computed address*/
+                             SCEVPointerType, /*SCEV min computed address*/
                              Int64Ty, /*Size of the type that is loaded/stored*/
                              Int64Ty, /*AccessId, Read/Write*/
                              Int64Ty, /*SourceId, Allocation source ID*/
@@ -399,7 +411,8 @@ private:
   FunctionCallee LifetimeStartFn;
   FunctionCallee FreeNLocalFn;
   FunctionCallee ThreadIDFn;
-  FunctionCallee CheckGlobalRangeFn[1];
+  FunctionCallee CheckRangeWithBaseFn[3];
+  FunctionCallee CheckRangeFn[3];
 
   StringMap<Value *> GlobalStringMap;
   struct AllocationInfoTy {
@@ -986,12 +999,6 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
 
-    // goto handleunhoistable;
-
-    // TODO: handle for Local access also.
-    if (PO != GLOBAL)
-      goto handleunhoistable;
-
     BasicBlock *CurrentBasicBlock = I.getParent();
 
     auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
@@ -1077,11 +1084,6 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     PCInst->insertBefore(&*LoopEnd);
 
     FunctionCallee Callee;
-    if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
-      Callee = getCheckWithRangeGlobalAddrSpaceCast();
-    } else {
-      Callee = getCheckWithRangeGlobal();
-    }
 
     // // print some debug data.
     // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";
@@ -1094,15 +1096,21 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     // errs() << *Size->getType() << "\n";
     // errs() << *AccessIDVal->getType() << "\n";
     // errs() << *PCVal->getType() << "\n";
+    bool UseAddressSpace = false;
+    if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
+      UseAddressSpace = true;
+    }
 
     if (Start) {
+      Callee = getCheckRangeWithBaseFn(PO, UseAddressSpace);
       CB = createCall(IRB, Callee,
                       {UpperBoundCode, LowerBoundCode, Start, Length, Tag, Size,
                        AccessIDVal, getSourceIndex(I), PCVal});
     } else {
+      Callee = getCheckRangeFn(PO, UseAddressSpace);
       CB = createCall(IRB, Callee,
-                      {UpperBoundCode, LowerBoundCode, Start, Length, Tag, Size,
-                       AccessIDVal, getSourceIndex(I), PCVal});
+                      {UpperBoundCode, LowerBoundCode, Size, AccessIDVal,
+                       getSourceIndex(I), PCVal});
     }
     CB->removeFromParent();
     CB->insertAfter(PCInst);
