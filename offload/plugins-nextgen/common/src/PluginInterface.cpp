@@ -1533,6 +1533,55 @@ Error GenericDeviceTy::printInfo() {
   return Plugin::success();
 }
 
+Expected<GenericKernelTy &>
+GenericDeviceTy::getKernel(llvm::StringRef Name, DeviceImageTy *ImagePtr) {
+
+  GenericKernelTy *&KernelPtr = KernelMap[Name];
+  if (!KernelPtr) {
+    GenericGlobalHandlerTy &GHandler = Plugin.getGlobalHandler();
+
+    auto CheckImage = [&](DeviceImageTy &Image) -> GenericKernelTy * {
+      if (!GHandler.isSymbolInImage(*this, Image, Name))
+        return nullptr;
+
+      auto KernelOrErr = constructKernelImpl(Name);
+      if (Error Err = KernelOrErr.takeError()) {
+        [[maybe_unused]] std::string ErrStr = toString(std::move(Err));
+        DP("Failed to construct kernel ('%s'): %s", Name.data(),
+           ErrStr.c_str());
+        return nullptr;
+      }
+
+      GenericKernelTy &Kernel = *KernelOrErr;
+      if (auto Err = Kernel.init(*this, Image)) {
+        [[maybe_unused]] std::string ErrStr = toString(std::move(Err));
+        DP("Failed to initialize kernel ('%s'): %s", Name.data(),
+           ErrStr.c_str());
+        return nullptr;
+      }
+
+      return &Kernel;
+    };
+
+    if (ImagePtr) {
+      KernelPtr = CheckImage(*ImagePtr);
+    } else {
+      for (DeviceImageTy *Image : LoadedImages) {
+        KernelPtr = CheckImage(*Image);
+        if (KernelPtr)
+          break;
+      }
+    }
+  }
+
+  if (!KernelPtr)
+    return Plugin::error("Kernel '%s' not found or could not be initialized, "
+                         "searched %zu images",
+                         Name.data(),
+                         ImagePtr ? size_t(1) : LoadedImages.size());
+  return *KernelPtr;
+}
+
 Error GenericDeviceTy::createEvent(void **EventPtrStorage) {
   return createEventImpl(EventPtrStorage);
 }
@@ -2147,20 +2196,14 @@ int32_t GenericPluginTy::get_function(__tgt_device_binary Binary,
 
   GenericDeviceTy &Device = Image.getDevice();
 
-  auto KernelOrErr = Device.constructKernel(Name);
+  auto KernelOrErr = Device.getKernel(Name, &Image);
   if (Error Err = KernelOrErr.takeError()) {
     REPORT("Failure to look up kernel: %s\n", toString(std::move(Err)).data());
     return OFFLOAD_FAIL;
   }
 
-  GenericKernelTy &Kernel = *KernelOrErr;
-  if (auto Err = Kernel.init(Device, Image)) {
-    REPORT("Failure to init kernel: %s\n", toString(std::move(Err)).data());
-    return OFFLOAD_FAIL;
-  }
-
   // Note that this is not the kernel's device address.
-  *KernelPtr = &Kernel;
+  *KernelPtr = &*KernelOrErr;
   return OFFLOAD_SUCCESS;
 }
 
