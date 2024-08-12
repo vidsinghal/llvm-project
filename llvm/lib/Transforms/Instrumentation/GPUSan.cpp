@@ -10,6 +10,7 @@
 
 #include "llvm/Transforms/Instrumentation/GPUSan.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -246,16 +247,35 @@ private:
   FunctionCallee getFreeNLocalFn() {
     return getOrCreateFn(FreeNLocalFn, "ompx_free_local_n", VoidTy, {Int32Ty});
   }
+
   FunctionCallee getCheckFn(PtrOrigin PO) {
     assert(PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(CheckFn[PO], "ompx_check" + getSuffix(PO),
                          getPtrTy(PO),
                          {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty, Int64Ty});
   }
+
+  FunctionCallee getCheckVoidFn(PtrOrigin PO) {
+    assert(PO <= GLOBAL && "Origin does not need handling.");
+    return getOrCreateFn(CheckVoidFn[PO], "ompx_check_void" + getSuffix(PO),
+                         Type::getVoidTy(Ctx),
+                         {getPtrTy(PO), Int64Ty, Int64Ty, Int64Ty, Int64Ty});
+  }
+
   FunctionCallee getCheckWithBaseFn(PtrOrigin PO) {
     assert(PO >= LOCAL && PO <= GLOBAL && "Origin does not need handling.");
     return getOrCreateFn(CheckWithBaseFn[PO],
                          "ompx_check_with_base" + getSuffix(PO), getPtrTy(PO),
+                         {getPtrTy(PO), getPtrTy(PO), Int64Ty, Int32Ty, Int64Ty,
+                          Int64Ty, Int64Ty, Int64Ty});
+  }
+
+  // check with base void return type
+  FunctionCallee getCheckWithBaseVoidFn(PtrOrigin PO) {
+    assert(PO >= LOCAL && PO <= GLOBAL && "Origin does not need handling.");
+    return getOrCreateFn(CheckWithBaseVoidFn[PO],
+                         "ompx_check_with_base_void" + getSuffix(PO),
+                         Type::getVoidTy(Ctx),
                          {getPtrTy(PO), getPtrTy(PO), Int64Ty, Int32Ty, Int64Ty,
                           Int64Ty, Int64Ty, Int64Ty});
   }
@@ -272,17 +292,17 @@ private:
                          });
   }
 
-  FunctionCallee getCheckWithBaseFnVector(uint64_t NumElements) {
+  FunctionCallee getCheckWithBaseFnVector(uint64_t NumElements, Type *ArrTy) {
     return getOrCreateFn(CheckWithBaseFnVector[0],
-                         "ompx_check_with_base_global_vec", PtrTy,
+                         "ompx_check_with_base_global_vec", ArrTy,
                          {
-                             PtrTy,   /*PlainPtrOps*/
-                             PtrTy,   /*Starts*/
-                             PtrTy,   /*Lengths*/
-                             PtrTy,   /*Tags*/
-                             PtrTy,   /*Sizes*/
-                             PtrTy,   /*AccessIds*/
-                             PtrTy,   /*SourceIds*/
+                             ArrTy,   /*PlainPtrOps*/
+                             ArrTy,   /*Starts*/
+                             ArrTy,   /*Lengths*/
+                             ArrTy,   /*Tags*/
+                             ArrTy,   /*Sizes*/
+                             ArrTy,   /*AccessIds*/
+                             ArrTy,   /*SourceIds*/
                              Int64Ty, /*PC*/
                              Int64Ty  /*NumElementsTy*/
                          });
@@ -402,7 +422,9 @@ private:
   FunctionCallee GEPFn[3];
   FunctionCallee FreeFn[3];
   FunctionCallee CheckFn[3];
+  FunctionCallee CheckVoidFn[3];
   FunctionCallee CheckWithBaseFn[3];
+  FunctionCallee CheckWithBaseVoidFn[3];
   FunctionCallee CheckFnVector[1];
   FunctionCallee CheckWithBaseFnVector[1];
   FunctionCallee AllocationInfoFn[3];
@@ -999,142 +1021,177 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
 
-    BasicBlock *CurrentBasicBlock = I.getParent();
-
     auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
     SCEVExpander Expander = SCEVExpander(SE, DL, "SCEVExpander");
-    auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
-    const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
+    const SCEV *PtrExpr = SE.getSCEV(PtrOp);
 
-    SmallVector<const SCEVPredicate *, 4> Preds;
-    SmallPtrSet<const SCEVPredicate *, 4> PredsSet;
+    const SCEV *ScStart;
+    const SCEV *ScEnd;
+    const SCEV *Step;
 
-    for (auto *Pred : Preds)
-      PredsSet.insert(Pred);
+    if (SE.isLoopInvariant(PtrExpr, L)) {
 
-    auto *BackEdges = SE.getPredicatedBackedgeTakenCount(L, Preds);
-    const SCEVAddRecExpr *AddRecExpr =
-        SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
+      if (!Expander.isSafeToExpand(PtrExpr))
+        goto handleunhoistable;
 
-    if (!AddRecExpr)
-      goto handleunhoistable;
+      // Assumption: Current loop has one unique predecessor
+      // We can insert at the end of the basic block if it
+      // is not a branch instruction.
+      auto *Entry = L->getLoopPreheader();
 
-    const SCEV *ScStart = AddRecExpr->getStart();
-    const SCEV *ScEnd = AddRecExpr->evaluateAtIteration(BackEdges, SE);
-    const SCEV *Step = AddRecExpr->getStepRecurrence(SE);
+      if (!Entry)
+        goto handleunhoistable;
 
-    // if (const SCEVConstant *ConstStep = dyn_cast<const SCEVConstant>(Step)) {
-    //   if (ConstStep->getValue()->isNegative()) {
-    //     std::swap(ScStart, ScEnd);
-    //   } else {
-    //     ScStart = SE.getUMinExpr(ScStart, ScEnd);
-    //     ScEnd = SE.getUMaxExpr(AddRecExpr->getStart(), ScEnd);
-    //   }
-    // }
+      Instruction *PtrOpInst = dyn_cast<Instruction>(PtrOp);
 
-    // // print some debug data.
-    // errs() << "ScStart: " << *ScStart << "\n";
-    // errs() << "ScEnd: " << *ScEnd << "\n";
-    // errs() << "Step: "  << *Step << "\n";
+      if (!PtrOpInst)
+        goto handleunhoistable;
 
-    if (!Expander.isSafeToExpand(ScStart))
-      goto handleunhoistable;
+      // Get handle to last instruction.
+      auto LoopEnd = --(Entry->end());
 
-    if (!Expander.isSafeToExpand(ScEnd))
-      goto handleunhoistable;
+      static int32_t ReadAccessId = -1;
+      static int32_t WriteAccessId = 1;
+      const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
 
-    // We need to find a suitable Insert Point.
-    // Assumption: Current loop has one unique predecessor
-    // We can insert at the end of the basic block if it
-    // is not a branch instruction.
-    BasicBlock *ParentLoop = L->getLoopPredecessor();
+      auto TySize = DL.getTypeStoreSize(&AccessTy);
+      assert(!TySize.isScalable());
+      Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
 
-    // If there is not one unique predecessor, for now give up
-    //  hoisting the check out of the loop.
-    if (!ParentLoop)
-      goto handleunhoistable;
+      LoopEnd = --(Entry->end());
+      CallInst *CB;
+      Value *PCVal = getPC(IRB);
+      Instruction *PCInst = dyn_cast<Instruction>(PCVal);
+      if (!PCInst)
+        return;
 
-    // Get handle to last instruction.
-    auto LoopEnd = --(ParentLoop->end());
-    Instruction *LoopEndInst = &*LoopEnd;
+      Value *AccessIDVal = ConstantInt::get(Int64Ty, AccessId);
+      PCInst->removeFromParent();
+      PCInst->insertBefore(LoopEnd);
 
-    Type *Int64Ty = Type::getInt64Ty(Ctx);
-    Value *LowerBoundCode = Expander.expandCodeFor(ScStart, nullptr, LoopEnd);
+      FunctionCallee Callee;
+      if (Start) {
+        CB = createCall(IRB, getCheckWithBaseVoidFn(PO),
+                        {PtrOp, Start, Length, Tag, Size,
+                         ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
+                         PCVal});
+      } else {
+        CB = createCall(IRB, getCheckVoidFn(PO),
+                        {PtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
+                         getSourceIndex(I), PCVal});
+      }
+      CB->removeFromParent();
+      CB->insertAfter(PCInst);
 
-    LoopEnd = --(ParentLoop->end());
-    Value *UpperBoundCode = Expander.expandCodeFor(ScEnd, nullptr, LoopEnd);
+      // get real pointer from the fake pointer.
+      Value *PlainPtrOp =
+          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+      auto *CBUnpack =
+          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+                     PtrOp->getName() + ".unpack");
 
-    static int32_t ReadAccessId = -1;
-    static int32_t WriteAccessId = 1;
-    const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
+      I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
+                               CBUnpack, PtrOp->getType()));
 
-    auto TySize = DL.getTypeStoreSize(&AccessTy);
-    assert(!TySize.isScalable());
-    Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
-
-    LoopEnd = --(ParentLoop->end());
-    CallInst *CB;
-    Value *PCVal = getPC(IRB);
-    Instruction *PCInst = dyn_cast<Instruction>(PCVal);
-    if (!PCInst)
       return;
 
-    Value *AccessIDVal = ConstantInt::get(Int64Ty, AccessId);
-    PCInst->removeFromParent();
-    PCInst->insertBefore(&*LoopEnd);
-
-    FunctionCallee Callee;
-
-    // // print some debug data.
-    // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";
-
-    // errs() << *UpperBoundCode->getType() << "\n";
-    // errs() << *LowerBoundCode->getType() << "\n";
-    // errs() << *Start->getType() << "\n";
-    // errs() << *Length->getType() << "\n";
-    // errs() << *Tag->getType() << "\n";
-    // errs() << *Size->getType() << "\n";
-    // errs() << *AccessIDVal->getType() << "\n";
-    // errs() << *PCVal->getType() << "\n";
-    bool UseAddressSpace = false;
-    if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
-      UseAddressSpace = true;
-    }
-
-    if (Start) {
-      Callee = getCheckRangeWithBaseFn(PO, UseAddressSpace);
-      CB = createCall(IRB, Callee,
-                      {UpperBoundCode, LowerBoundCode, Start, Length, Tag, Size,
-                       AccessIDVal, getSourceIndex(I), PCVal});
     } else {
-      Callee = getCheckRangeFn(PO, UseAddressSpace);
-      CB = createCall(IRB, Callee,
-                      {UpperBoundCode, LowerBoundCode, Size, AccessIDVal,
-                       getSourceIndex(I), PCVal});
+      const SCEVAddRecExpr *AddRecExpr = dyn_cast<SCEVAddRecExpr>(PtrExpr);
+      if (AddRecExpr) {
+
+        auto *Entry = L->getLoopPreheader();
+
+        if (!Entry)
+          goto handleunhoistable;
+
+        const SCEV *Ex = SE.getSymbolicMaxBackedgeTakenCount(L);
+
+        ScStart = AddRecExpr->getStart();
+        ScEnd = AddRecExpr->evaluateAtIteration(Ex, SE);
+        Step = AddRecExpr->getStepRecurrence(SE);
+
+        if (const auto *CStep = dyn_cast<SCEVConstant>(Step)) {
+          if (CStep->getValue()->isNegative())
+            std::swap(ScStart, ScEnd);
+        } else {
+          ScStart = SE.getUMinExpr(ScStart, ScEnd);
+          ScEnd = SE.getUMaxExpr(AddRecExpr->getStart(), ScEnd);
+        }
+
+        if (!Expander.isSafeToExpand(ScStart))
+          goto handleunhoistable;
+
+        if (!Expander.isSafeToExpand(ScEnd))
+          goto handleunhoistable;
+
+        // Get handle to last instruction.
+        auto LoopEnd = --(Entry->end());
+        Instruction *LoopEndInst = &*LoopEnd;
+
+        Type *Int64Ty = Type::getInt64Ty(Ctx);
+        Value *LowerBoundCode =
+            Expander.expandCodeFor(ScStart, nullptr, LoopEnd);
+
+        LoopEnd = --(Entry->end());
+
+        Value *UpperBoundCode = Expander.expandCodeFor(ScEnd, nullptr, LoopEnd);
+        static int32_t ReadAccessId = -1;
+        static int32_t WriteAccessId = 1;
+        const int32_t &AccessId = IsRead ? ReadAccessId-- : WriteAccessId++;
+
+        auto TySize = DL.getTypeStoreSize(&AccessTy);
+        assert(!TySize.isScalable());
+        Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
+
+        LoopEnd = --(Entry->end());
+
+        CallInst *CB;
+        Value *PCVal = getPC(IRB);
+        Instruction *PCInst = dyn_cast<Instruction>(PCVal);
+
+        if (!PCInst)
+          return;
+
+        Value *AccessIDVal = ConstantInt::get(Int64Ty, AccessId);
+        PCInst->removeFromParent();
+        PCInst->insertBefore(LoopEnd);
+
+        FunctionCallee Callee;
+        bool UseAddressSpace = false;
+        if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
+          UseAddressSpace = true;
+        }
+
+        if (Start) {
+          Callee = getCheckRangeWithBaseFn(PO, UseAddressSpace);
+          CB = createCall(IRB, Callee,
+                          {UpperBoundCode, LowerBoundCode, Start, Length, Tag,
+                           Size, AccessIDVal, getSourceIndex(I), PCVal});
+        } else {
+          Callee = getCheckRangeFn(PO, UseAddressSpace);
+          CB = createCall(IRB, Callee,
+                          {UpperBoundCode, LowerBoundCode, Size, AccessIDVal,
+                           getSourceIndex(I), PCVal});
+        }
+        CB->removeFromParent();
+        CB->insertAfter(PCInst);
+
+        // Convert fake pointer to real pointer.
+        Value *PlainPtrOp =
+            IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+        auto *CBUnpack =
+            createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+                       PtrOp->getName() + ".unpack");
+
+        I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
+                                 CBUnpack, PtrOp->getType()));
+
+        return;
+
+      } else {
+        goto handleunhoistable;
+      }
     }
-    CB->removeFromParent();
-    CB->insertAfter(PCInst);
-
-    // Still need to get the real pointer from the pointer op.
-    // Convert fake pointer to real pointer.
-    Value *PlainPtrOp =
-        IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
-    auto *CBUnpack = createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
-                                PtrOp->getName() + ".unpack");
-
-    I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                             CBUnpack, PtrOp->getType()));
-
-    return;
-
-    // // print some debug info data
-    // for (auto It = CB->arg_begin(); It != CB->arg_end(); It++){
-    //   auto *Op = &*It;
-    //   if (Value *ValOp = dyn_cast<Value>(Op))
-    //     errs() << "Print Val Type: " << *ValOp << "\n";
-    // }
-
-    // errs() << "Print Callee Type: " << *Callee.getFunctionType() << "\n";
   }
 
 handleunhoistable:
@@ -1185,6 +1242,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
   SmallVector<Value *> SizesBase;
   SmallVector<Value *> AccessIdsBase;
   SmallVector<Value *> SourceIdsBase;
+  SmallVector<PtrOrigin> PointerOriginsBase;
 
   SmallVector<Instruction *> InstructionsWithoutBase;
   SmallVector<int> PtrIdxList;
@@ -1196,6 +1254,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
   SmallVector<Value *> Sizes;
   SmallVector<Value *> AccessIds;
   SmallVector<Value *> SourceIds;
+  SmallVector<PtrOrigin> PointerOrigins;
 
   IRBuilder<> IRB(AccessCausingInstructionInABasicBlock.front());
 
@@ -1232,60 +1291,62 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
                         Start, Length, Tag);
 
     if (Loop *L = LI.getLoopFor(I->getParent())) {
-      auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I->getFunction());
-      auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
-      const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
-      SmallVector<const SCEVPredicate *, 4> Preds;
-      SmallPtrSet<const SCEVPredicate *, 4> PredsSet;
-      for (auto *Pred : Preds)
-        PredsSet.insert(Pred);
-      auto *Ex = SE.getPredicatedBackedgeTakenCount(L, Preds);
+      // auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I->getFunction());
+      // auto *PtrOpScev = SE.getSCEVAtScope(PtrOp, L);
+      // const auto &LD = SE.getLoopDisposition(PtrOpScev, L);
+      // SmallVector<const SCEVPredicate *, 4> Preds;
+      // SmallPtrSet<const SCEVPredicate *, 4> PredsSet;
+      // for (auto *Pred : Preds)
+      //   PredsSet.insert(Pred);
+      // auto *Ex = SE.getPredicatedBackedgeTakenCount(L, Preds);
 
-      errs() << "Loop Disposition: " << LD << "\n";
-      errs() << "ABS Expression: " << SE.getSmallConstantTripCount(L) << "\n";
-      const SCEVAddRecExpr *AR =
-          SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
+      // errs() << "Loop Disposition: " << LD << "\n";
+      // errs() << "ABS Expression: " << SE.getSmallConstantTripCount(L) <<
+      // "\n"; const SCEVAddRecExpr *AR =
+      //     SE.convertSCEVToAddRecWithPredicates(PtrOpScev, L, PredsSet);
 
-      const SCEV *ScStart = AR->getStart();
-      const SCEV *ScEnd = AR->evaluateAtIteration(Ex, SE);
-      const SCEV *Step = AR->getStepRecurrence(SE);
+      // const SCEV *ScStart = AR->getStart();
+      // const SCEV *ScEnd = AR->evaluateAtIteration(Ex, SE);
+      // const SCEV *Step = AR->getStepRecurrence(SE);
 
-      // // For expressions with negative step, the upper bound is ScStart and
-      // the
-      // // lower bound is ScEnd.
-      if (const SCEVConstant *CStep = dyn_cast<const SCEVConstant>(Step)) {
-        if (CStep->getValue()->isNegative())
-          std::swap(ScStart, ScEnd);
-      } else {
-        // Fallback case: the step is not constant, but the we can still
-        // get the upper and lower bounds of the interval by using min/max
-        // expressions.
-        ScStart = SE.getUMinExpr(ScStart, ScEnd);
-        ScEnd = SE.getUMaxExpr(AR->getStart(), ScEnd);
-      }
+      // // // For expressions with negative step, the upper bound is ScStart
+      // and
+      // // the
+      // // // lower bound is ScEnd.
+      // if (const SCEVConstant *CStep = dyn_cast<const SCEVConstant>(Step)) {
+      //   if (CStep->getValue()->isNegative())
+      //     std::swap(ScStart, ScEnd);
+      // } else {
+      //   // Fallback case: the step is not constant, but the we can still
+      //   // get the upper and lower bounds of the interval by using min/max
+      //   // expressions.
+      //   ScStart = SE.getUMinExpr(ScStart, ScEnd);
+      //   ScEnd = SE.getUMaxExpr(AR->getStart(), ScEnd);
+      // }
 
-      errs() << "SC step: " << *Step << "\n";
-      errs() << "Sc start: " << *ScStart << "\n";
-      errs() << "Sc end: " << *ScEnd << "\n";
-      ScEnd->print(errs());
-      errs() << "\n";
-      ScEnd->dump();
-      errs() << "\n";
+      // errs() << "SC step: " << *Step << "\n";
+      // errs() << "Sc start: " << *ScStart << "\n";
+      // errs() << "Sc end: " << *ScEnd << "\n";
+      // ScEnd->print(errs());
+      // errs() << "\n";
+      // ScEnd->dump();
+      // errs() << "\n";
 
-      ArrayRef<const SCEV *> Ops = ScEnd->operands();
-      errs() << "\n";
-      for (auto *Op : Ops) {
-        errs() << "Operand: " << *Op << "\n";
-        errs() << "Operand Scev Type: " << Op->getSCEVType() << "\n";
-        errs() << "Operand Type: " << *Op->getType() << "\n";
-      }
-      errs() << "\n";
+      // ArrayRef<const SCEV *> Ops = ScEnd->operands();
+      // errs() << "\n";
+      // for (auto *Op : Ops) {
+      //   errs() << "Operand: " << *Op << "\n";
+      //   errs() << "Operand Scev Type: " << Op->getSCEVType() << "\n";
+      //   errs() << "Operand Type: " << *Op->getType() << "\n";
+      // }
+      // errs() << "\n";
 
-      errs() << "Scev Type: " << ScEnd->getSCEVType() << "\n";
-      errs() << "Type: " << *ScEnd->getType() << "\n";
-      errs() << "Is Non Constant Negative: " << ScEnd->isNonConstantNegative()
-             << "\n";
-      errs() << "PtrOp: " << *PtrOp << "\n";
+      // errs() << "Scev Type: " << ScEnd->getSCEVType() << "\n";
+      // errs() << "Type: " << *ScEnd->getType() << "\n";
+      // errs() << "Is Non Constant Negative: " <<
+      // ScEnd->isNonConstantNegative()
+      //        << "\n";
+      // errs() << "PtrOp: " << *PtrOp << "\n";
     }
 
     static int32_t ReadAccessId = -1;
@@ -1310,6 +1371,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
         SizesBase.push_back(Size);
         AccessIdsBase.push_back(ConstantInt::get(Int64Ty, AccessId));
         SourceIdsBase.push_back(getSourceIndex(*I));
+        PointerOriginsBase.push_back(PO);
       } else {
 
         CallInst *CB;
@@ -1331,6 +1393,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
         Sizes.push_back(Size);
         AccessIds.push_back(ConstantInt::get(Int64Ty, AccessId));
         SourceIds.push_back(getSourceIndex(*I));
+        PointerOrigins.push_back(PO);
       } else {
         CallInst *CB;
         CB = createCall(IRB, getCheckFn(PO),
@@ -1351,7 +1414,8 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     // ArrayType for array of plain pointer ops from base
     auto *PlainPtrOpsBaseTy = ArrayType::get(PtrTy, NumElements);
     // Make Alloca to array type
-    AllocaInst *PlainPtrOpsBaseArr = IRB.CreateAlloca(PlainPtrOpsBaseTy);
+    unsigned int Addr = 5;
+    AllocaInst *PlainPtrOpsBaseArr = IRB.CreateAlloca(PlainPtrOpsBaseTy, Addr);
     int Index = 0;
     for (auto &Element : PlainPtrOpsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1362,7 +1426,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *StartsBaseTy = ArrayType::get(PtrTy, NumElements);
-    AllocaInst *StartsBaseArr = IRB.CreateAlloca(StartsBaseTy);
+    AllocaInst *StartsBaseArr = IRB.CreateAlloca(StartsBaseTy, Addr);
     Index = 0;
     for (auto &Element : StartsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1373,7 +1437,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *LengthsBaseTy = ArrayType::get(Int64Ty, NumElements);
-    AllocaInst *LengthsBaseArr = IRB.CreateAlloca(LengthsBaseTy);
+    AllocaInst *LengthsBaseArr = IRB.CreateAlloca(LengthsBaseTy, Addr);
     Index = 0;
     for (auto &Element : StartsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1384,7 +1448,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *TagsBaseTy = ArrayType::get(Int32Ty, NumElements);
-    AllocaInst *TagsBaseArr = IRB.CreateAlloca(TagsBaseTy);
+    AllocaInst *TagsBaseArr = IRB.CreateAlloca(TagsBaseTy, Addr);
     Index = 0;
     for (auto &Element : TagsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1395,7 +1459,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *SizesBaseTy = ArrayType::get(Int64Ty, NumElements);
-    auto *SizesBaseArr = IRB.CreateAlloca(SizesBaseTy);
+    auto *SizesBaseArr = IRB.CreateAlloca(SizesBaseTy, Addr);
     Index = 0;
     for (auto &Element : SizesBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1406,7 +1470,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *AccessIdsBaseTy = ArrayType::get(Int64Ty, NumElements);
-    auto *AccessIdsBaseArr = IRB.CreateAlloca(AccessIdsBaseTy);
+    auto *AccessIdsBaseArr = IRB.CreateAlloca(AccessIdsBaseTy, Addr);
     Index = 0;
     for (auto &Element : AccessIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1417,7 +1481,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *SourceIdsBaseTy = ArrayType::get(Int64Ty, NumElements);
-    auto *SourceIdsBaseArr = IRB.CreateAlloca(SourceIdsBaseTy);
+    auto *SourceIdsBaseArr = IRB.CreateAlloca(SourceIdsBaseTy, Addr);
     Index = 0;
     for (auto &Element : SourceIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1427,7 +1491,21 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       Index++;
     }
 
-    CB = createCall(IRB, getCheckWithBaseFnVector(NumElements),
+    FunctionCallee Callee =
+        getCheckWithBaseFnVector(NumElements, PlainPtrOpsBaseArr->getType());
+
+    errs() << "Print Function Callee Signature: " << *Callee.getFunctionType()
+           << "\n";
+
+    errs() << "PlainPtrOpsBaseArr: " << *PlainPtrOpsBaseArr->getType() << "\n";
+    errs() << "StartsBaseArr: " << *StartsBaseArr->getType() << "\n";
+    errs() << "LengthsBaseArr: " << *LengthsBaseArr->getType() << "\n";
+    errs() << "TagsBaseArr: " << *TagsBaseArr->getType() << "\n";
+    errs() << "SizesBaseArr: " << *SizesBaseArr->getType() << "\n";
+    errs() << "AccessIdsBaseArr: " << *AccessIdsBaseArr->getType() << "\n";
+    errs() << "SourceIdsBaseArr: " << *SourceIdsBaseArr->getType() << "\n";
+
+    CB = createCall(IRB, Callee,
                     {PlainPtrOpsBaseArr, StartsBaseArr, LengthsBaseArr,
                      TagsBaseArr, SizesBaseArr, AccessIdsBaseArr,
                      SourceIdsBaseArr, getPC(IRB),
@@ -1441,9 +1519,21 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       Value *GEPForLoad = IRB.CreateGEP(CB->getType(), CB, {ValueIndex});
       LoadInst *Load = IRB.CreateLoad(PtrTy, GEPForLoad);
       int PtrIdx = PtrIdxListBase[Index];
+      PtrOrigin PO = PointerOriginsBase[Index];
       Value *PtrOp = PtrOpsBase[Index];
+
+      // Still need to get the real pointer from the pointer op.
+      // Convert fake pointer to real pointer.
+      Value *PlainPtrOp =
+          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+
+      auto *CBUnpack =
+          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+                     PtrOp->getName() + ".unpack");
+
       I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                                Load, PtrOp->getType()));
+                                CBUnpack, PtrOp->getType()));
+
       Index++;
     }
   }
@@ -1508,8 +1598,20 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       LoadInst *Load = IRB.CreateLoad(PtrTy, GEPForLoad);
       int PtrIdx = PtrIdxList[Index];
       Value *PtrOp = PtrOps[Index];
+      PtrOrigin PO = PointerOrigins[Index];
+
+      // Still need to get the real pointer from the pointer op.
+      // Convert fake pointer to real pointer.
+      Value *PlainPtrOp =
+          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+
+      auto *CBUnpack =
+          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+                     PtrOp->getName() + ".unpack");
+
       I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                                Load, PtrOp->getType()));
+                                CBUnpack, PtrOp->getType()));
+
       Index++;
     }
   }
@@ -1637,7 +1739,7 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
       }
     }
 
-    // Hoist all address computation in a basic block
+    // // Hoist all address computation in a basic block
     // auto GEPCopy = GEPs;
     // while (!GEPCopy.empty()) {
     //   auto *Inst = GEPCopy.pop_back_val();
@@ -1674,7 +1776,7 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
 
     // check if you can merge various pointer checks.
     // if (CanMergeChecks) {
-    //  instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
+    // instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
     //} else {
     for (auto *Load : Loads)
       instrumentLoadInst(LI, *Load, GEPs);

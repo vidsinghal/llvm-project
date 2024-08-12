@@ -4,6 +4,9 @@
 
 typedef int IntTy;
 
+// void printArray(int *a, int Size);
+// void printArray(IntTy a[], int Size);
+
 IntTy *foo(int Size) {
 
   IntTy *a;
@@ -16,6 +19,8 @@ IntTy *foo(int Size) {
     }
   }
 
+  // printArray(a, Size);
+
   return a;
 }
 
@@ -25,6 +30,13 @@ void printArray(int *a, int Size) {
     printf("a: %d ", a[I]);
   }
 }
+
+/*void printArray(IntTy a[], int Size) {
+
+  for (IntTy I = 0; I < Size; I++) {
+    printf("a: %d ", a[I]);
+  }
+}*/
 
 int main() {
 
