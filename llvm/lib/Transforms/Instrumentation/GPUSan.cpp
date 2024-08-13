@@ -174,7 +174,8 @@ private:
                         SmallVector<GetElementPtrInst *> &GEPs);
   void instrumentMultipleAccessPerBasicBlock(
       LoopInfo &LI,
-      SmallVector<Instruction *> &AccessCausingInstructionInABasicBlock);
+      SmallVector<Instruction *> &AccessCausingInstructionInABasicBlock, 
+      Function &Fn);
   void instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI,
                           SmallVector<GetElementPtrInst *> &GEPs);
   void instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI,
@@ -308,20 +309,13 @@ private:
                          });
   }
 
-  FunctionCallee getCheckRangeWithBaseFn(PtrOrigin PO, bool UseAddrSpacePtrTy) {
-
-    Type *SCEVPointerType;
-    if (UseAddrSpacePtrTy)
-      SCEVPointerType = Int32ASPtrType;
-    else
-      SCEVPointerType = getPtrTy(PO);
-
+  FunctionCallee getCheckRangeWithBaseFn(PtrOrigin PO, Type* UpperBoundType, Type* LowerBoundType) {
     return getOrCreateFn(CheckRangeWithBaseFn[PO],
                          "ompx_check_range_with_base" + getSuffix(PO),
                          Type::getVoidTy(Ctx),
                          {
-                             SCEVPointerType, /*SCEV max computed address*/
-                             SCEVPointerType, /*SCEV min computed address*/
+                             UpperBoundType, /*SCEV max computed address*/
+                             LowerBoundType, /*SCEV min computed address*/
                              getPtrTy(PO),    /*Start of allocation address*/
                              Int64Ty, /*Size of allocation, i.e. Length*/
                              Int32Ty, /*Tag*/
@@ -332,19 +326,12 @@ private:
                          });
   }
 
-  FunctionCallee getCheckRangeFn(PtrOrigin PO, bool UseAddrSpacePtrTy) {
-
-    Type *SCEVPointerType;
-    if (UseAddrSpacePtrTy)
-      SCEVPointerType = Int32ASPtrType;
-    else
-      SCEVPointerType = getPtrTy(PO);
-
+  FunctionCallee getCheckRangeFn(PtrOrigin PO, Type* UpperBoundType, Type* LowerBoundType) {
     return getOrCreateFn(CheckRangeFn[PO], "ompx_check_range" + getSuffix(PO),
                          Type::getVoidTy(Ctx),
                          {
-                             SCEVPointerType, /*SCEV max computed address*/
-                             SCEVPointerType, /*SCEV min computed address*/
+                             UpperBoundType, /*SCEV max computed address*/
+                             LowerBoundType, /*SCEV min computed address*/
                              Int64Ty, /*Size of the type that is loaded/stored*/
                              Int64Ty, /*AccessId, Read/Write*/
                              Int64Ty, /*SourceId, Allocation source ID*/
@@ -1021,6 +1008,8 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
 
+    goto handleunhoistable;
+
     auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(*I.getFunction());
     SCEVExpander Expander = SCEVExpander(SE, DL, "SCEVExpander");
     const SCEV *PtrExpr = SE.getSCEV(PtrOp);
@@ -1069,14 +1058,31 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
       PCInst->removeFromParent();
       PCInst->insertBefore(LoopEnd);
 
+        errs() << "PtrOp: " << *PtrOp->getType() << "\n";
+        errs() << "Start: " << *Start->getType() << "\n";
+        errs() << "Length: " << *Length->getType() << "\n";
+        errs() << "Tag: " << *Tag->getType() << "\n";
+        errs() << "Size: " << *Size->getType() << "\n";
+        errs() << "AccessIDVal: " << *AccessIDVal->getType() << "\n";
+
       FunctionCallee Callee;
+      //Value *PlainPtrOpHoisted =
+      //    IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+      //Instruction *PlainPtrOpHoistedIns = dyn_cast<Instruction>(PlainPtrOpHoisted);
+      //if (!PlainPtrOpHoistedIns)
+      //  goto handleunhoistable;
+      
+      //PlainPtrOpHoistedIns->moveAfter(PCInst);
       if (Start) {
-        CB = createCall(IRB, getCheckWithBaseVoidFn(PO),
+        Callee = getCheckWithBaseFn(PO);
+        errs() << "Print Function Callee Signature: " << *Callee.getFunctionType() << "\n";
+        CB = createCall(IRB, Callee,
                         {PtrOp, Start, Length, Tag, Size,
                          ConstantInt::get(Int64Ty, AccessId), getSourceIndex(I),
                          PCVal});
       } else {
-        CB = createCall(IRB, getCheckVoidFn(PO),
+        Callee = getCheckFn(PO);
+        CB = createCall(IRB, Callee,
                         {PtrOp, Size, ConstantInt::get(Int64Ty, AccessId),
                          getSourceIndex(I), PCVal});
       }
@@ -1084,14 +1090,13 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
       CB->insertAfter(PCInst);
 
       // get real pointer from the fake pointer.
-      Value *PlainPtrOp =
-          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
-      auto *CBUnpack =
-          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
-                     PtrOp->getName() + ".unpack");
+      //Value *PlainPtrOp =
+      //    IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+      //auto *CBUnpack =
+      //    createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+      //               PtrOp->getName() + ".unpack");
 
-      I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                               CBUnpack, PtrOp->getType()));
+      I.setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(CB, PtrOp->getType()));
 
       return;
 
@@ -1157,18 +1162,24 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
         PCInst->insertBefore(LoopEnd);
 
         FunctionCallee Callee;
-        bool UseAddressSpace = false;
-        if (UpperBoundCode->getType()->getPointerAddressSpace() == 1) {
-          UseAddressSpace = true;
-        }
+
+        errs() << "UpperBoundCode: " << *UpperBoundCode->getType() << "\n";
+        errs() << "LowerBoundCode: " << *LowerBoundCode->getType() << "\n";
+        errs() << "Start: " << *Start->getType() << "\n";
+        errs() << "Length: " << *Length->getType() << "\n";
+        errs() << "Tag: " << *Tag->getType() << "\n";
+        errs() << "Size: " << *Size->getType() << "\n";
+        errs() << "AccessIDVal: " << *AccessIDVal->getType() << "\n";
 
         if (Start) {
-          Callee = getCheckRangeWithBaseFn(PO, UseAddressSpace);
+          Callee = getCheckRangeWithBaseFn(PO, UpperBoundCode->getType(), LowerBoundCode->getType());
+          errs() << "Print Function Callee Signature: " << *Callee.getFunctionType() << "\n";
           CB = createCall(IRB, Callee,
                           {UpperBoundCode, LowerBoundCode, Start, Length, Tag,
                            Size, AccessIDVal, getSourceIndex(I), PCVal});
         } else {
-          Callee = getCheckRangeFn(PO, UseAddressSpace);
+          Callee = getCheckRangeFn(PO, UpperBoundCode->getType(), LowerBoundCode->getType());
+          errs() << "Print Function Callee Signature: " << *Callee.getFunctionType() << "\n";
           CB = createCall(IRB, Callee,
                           {UpperBoundCode, LowerBoundCode, Size, AccessIDVal,
                            getSourceIndex(I), PCVal});
@@ -1227,7 +1238,8 @@ handleunhoistable:
 
 void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     LoopInfo &LI,
-    SmallVector<Instruction *> &AccessCausingInstructionInABasicBlock) {
+    SmallVector<Instruction *> &AccessCausingInstructionInABasicBlock, 
+    Function &Fn) {
 
   if (AccessCausingInstructionInABasicBlock.empty())
     return;
@@ -1407,6 +1419,9 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
   }
 
+  BasicBlock &EntryBlock = Fn.getEntryBlock();
+  auto EntryBlockEnd = (--EntryBlock.end());
+
   // Sanitize multiple pointers in one call.
   if (!PlainPtrOpsBase.empty()) {
     CallInst *CB;
@@ -1414,8 +1429,13 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     // ArrayType for array of plain pointer ops from base
     auto *PlainPtrOpsBaseTy = ArrayType::get(PtrTy, NumElements);
     // Make Alloca to array type
-    unsigned int Addr = 5;
+    unsigned int Addr = 0;
     AllocaInst *PlainPtrOpsBaseArr = IRB.CreateAlloca(PlainPtrOpsBaseTy, Addr);
+    PlainPtrOpsBaseArr->moveBefore(&*EntryBlockEnd);
+
+    //Type *IntPtrPtrTy = PtrTy->getPointerTo();
+    //Constant *NullVal = ConstantAggregateZero::get(PlainPtrOpsBaseTy);
+    //GlobalVariable *PlainPtrOpsBaseArr = new GlobalVariable(M, PlainPtrOpsBaseTy, false, GlobalValue::ExternalLinkage, NullVal,"", nullptr, GlobalValue::NotThreadLocal, 0);
     int Index = 0;
     for (auto &Element : PlainPtrOpsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1427,6 +1447,11 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *StartsBaseTy = ArrayType::get(PtrTy, NumElements);
     AllocaInst *StartsBaseArr = IRB.CreateAlloca(StartsBaseTy, Addr);
+    StartsBaseArr->moveBefore(&*EntryBlockEnd);
+    //Type *IntPtrPtrTy = PtrTy->getPointerTo();
+    //NullVal = ConstantAggregateZero::get(StartsBaseTy);
+    //GlobalVariable *StartsBaseArr = new GlobalVariable(M, StartsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+
     Index = 0;
     for (auto &Element : StartsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1438,8 +1463,11 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *LengthsBaseTy = ArrayType::get(Int64Ty, NumElements);
     AllocaInst *LengthsBaseArr = IRB.CreateAlloca(LengthsBaseTy, Addr);
+    LengthsBaseArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(LengthsBaseTy);
+    //GlobalVariable *LengthsBaseArr = new GlobalVariable(M, LengthsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
-    for (auto &Element : StartsBase) {
+    for (auto &Element : LengthsBase) {
       StoreInst *Store = IRB.CreateStore(
           Element,
           IRB.CreateGEP(LengthsBaseTy, LengthsBaseArr,
@@ -1449,6 +1477,9 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *TagsBaseTy = ArrayType::get(Int32Ty, NumElements);
     AllocaInst *TagsBaseArr = IRB.CreateAlloca(TagsBaseTy, Addr);
+    TagsBaseArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(TagsBaseTy);
+    //GlobalVariable *TagsBaseArr = new GlobalVariable(M, TagsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : TagsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1460,6 +1491,9 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *SizesBaseTy = ArrayType::get(Int64Ty, NumElements);
     auto *SizesBaseArr = IRB.CreateAlloca(SizesBaseTy, Addr);
+    SizesBaseArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(SizesBaseTy);
+    //GlobalVariable *SizesBaseArr = new GlobalVariable(M, SizesBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : SizesBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1471,6 +1505,9 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *AccessIdsBaseTy = ArrayType::get(Int64Ty, NumElements);
     auto *AccessIdsBaseArr = IRB.CreateAlloca(AccessIdsBaseTy, Addr);
+    AccessIdsBaseArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(AccessIdsBaseTy);
+    //GlobalVariable *AccessIdsBaseArr = new GlobalVariable(M, AccessIdsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : AccessIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1482,6 +1519,9 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
     auto *SourceIdsBaseTy = ArrayType::get(Int64Ty, NumElements);
     auto *SourceIdsBaseArr = IRB.CreateAlloca(SourceIdsBaseTy, Addr);
+    SourceIdsBaseArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(SourceIdsBaseTy);
+    //GlobalVariable *SourceIdsBaseArr = new GlobalVariable(M, SourceIdsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : SourceIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1524,15 +1564,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
       // Still need to get the real pointer from the pointer op.
       // Convert fake pointer to real pointer.
-      Value *PlainPtrOp =
-          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+      //Value *PlainPtrOp =
+      //    IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
 
-      auto *CBUnpack =
-          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
-                     PtrOp->getName() + ".unpack");
+      //auto *CBUnpack =
+      //    createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+      //               PtrOp->getName() + ".unpack");
 
       I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                                CBUnpack, PtrOp->getType()));
+                                Load, PtrOp->getType()));
 
       Index++;
     }
@@ -1542,7 +1582,11 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     CallInst *CB;
     uint64_t NumElements = PlainPtrOps.size();
     auto *PlainPtrOpsTy = ArrayType::get(PtrTy, NumElements);
-    auto *PlainPtrOpsArr = IRB.CreateAlloca(PlainPtrOpsTy);
+    unsigned int Addr = 0;
+    auto *PlainPtrOpsArr = IRB.CreateAlloca(PlainPtrOpsTy, Addr);
+    PlainPtrOpsArr->moveBefore(&*EntryBlockEnd);
+    //auto *NullVal = ConstantAggregateZero::get(PlainPtrOpsTy);
+    //GlobalVariable *PlainPtrOpsArr = new GlobalVariable(M, PlainPtrOpsTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     int Index = 0;
     for (auto &Element : PlainPtrOps) {
       IRB.CreateStore(
@@ -1553,7 +1597,10 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *SizesTy = ArrayType::get(Int64Ty, NumElements);
-    auto *SizesArr = IRB.CreateAlloca(SizesTy);
+    auto *SizesArr = IRB.CreateAlloca(SizesTy, Addr);
+    SizesArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(SizesTy);
+    //GlobalVariable *SizesArr = new GlobalVariable(M, SizesTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : Sizes) {
       IRB.CreateStore(
@@ -1564,7 +1611,10 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *AccessIdsTy = ArrayType::get(Int64Ty, NumElements);
-    auto *AccessIdsArr = IRB.CreateAlloca(AccessIdsTy);
+    auto *AccessIdsArr = IRB.CreateAlloca(AccessIdsTy, Addr);
+    AccessIdsArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(AccessIdsTy);
+    //GlobalVariable *AccessIdsArr = new GlobalVariable(M, AccessIdsTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : AccessIds) {
       IRB.CreateStore(
@@ -1575,7 +1625,10 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     auto *SourceIdsTy = ArrayType::get(Int64Ty, NumElements);
-    auto *SourceIdsArr = IRB.CreateAlloca(SourceIdsTy);
+    auto *SourceIdsArr = IRB.CreateAlloca(SourceIdsTy, Addr);
+    SourceIdsArr->moveBefore(&*EntryBlockEnd);
+    //NullVal = ConstantAggregateZero::get(SourceIdsTy);
+    //GlobalVariable *SourceIdsArr = new GlobalVariable(M, SourceIdsTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
     Index = 0;
     for (auto &Element : SourceIds) {
       IRB.CreateStore(
@@ -1602,15 +1655,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
 
       // Still need to get the real pointer from the pointer op.
       // Convert fake pointer to real pointer.
-      Value *PlainPtrOp =
-          IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
+      //Value *PlainPtrOp =
+      //    IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
 
-      auto *CBUnpack =
-          createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
-                     PtrOp->getName() + ".unpack");
+      //auto *CBUnpack =
+      //    createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
+      //               PtrOp->getName() + ".unpack");
 
       I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                                CBUnpack, PtrOp->getType()));
+                                Load, PtrOp->getType()));
 
       Index++;
     }
@@ -1739,50 +1792,50 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
       }
     }
 
-    // // Hoist all address computation in a basic block
-    // auto GEPCopy = GEPs;
-    // while (!GEPCopy.empty()) {
-    //   auto *Inst = GEPCopy.pop_back_val();
-    //   Instruction *LatestDependency = &*Inst->getParent()->begin();
-    //   for (auto *It = Inst->op_begin(); It != Inst->op_end(); It++) {
+    // Hoist all address computation in a basic block
+    auto GEPCopy = GEPs;
+    while (!GEPCopy.empty()) {
+      auto *Inst = GEPCopy.pop_back_val();
+      Instruction *LatestDependency = &*Inst->getParent()->begin();
+      for (auto *It = Inst->op_begin(); It != Inst->op_end(); It++) {
 
-    //     if (Instruction *ToInstruction = dyn_cast<Instruction>(It)) {
+        if (Instruction *ToInstruction = dyn_cast<Instruction>(It)) {
 
-    //       if (!LatestDependency) {
-    //         LatestDependency = ToInstruction;
-    //         continue;
-    //       }
+          if (!LatestDependency) {
+            LatestDependency = ToInstruction;
+            continue;
+          }
 
-    //       if (ToInstruction->getParent() != Inst->getParent())
-    //         continue;
+          if (ToInstruction->getParent() != Inst->getParent())
+            continue;
 
-    //       if (LatestDependency->comesBefore(ToInstruction))
-    //         LatestDependency = ToInstruction;
-    //     }
-    //   }
+          if (LatestDependency->comesBefore(ToInstruction))
+            LatestDependency = ToInstruction;
+        }
+      }
 
-    //   Inst->moveAfter(LatestDependency);
-    // }
+      Inst->moveAfter(LatestDependency);
+    }
 
-    // bool CanMergeChecks = true;
-    // for (auto *GEP : GEPs) {
+    bool CanMergeChecks = true;
+    for (auto *GEP : GEPs) {
 
-    //   if (GEP->comesBefore(LoadsStores.front())) {
-    //     CanMergeChecks = CanMergeChecks && true;
-    //   } else {
-    //     CanMergeChecks = CanMergeChecks && false;
-    //   }
-    // }
+      if (GEP->comesBefore(LoadsStores.front())) {
+        CanMergeChecks = CanMergeChecks && true;
+      } else {
+        CanMergeChecks = CanMergeChecks && false;
+      }
+    }
 
     // check if you can merge various pointer checks.
-    // if (CanMergeChecks) {
-    // instrumentMultipleAccessPerBasicBlock(LI, LoadsStores);
-    //} else {
+    if (CanMergeChecks) {
+     instrumentMultipleAccessPerBasicBlock(LI, LoadsStores, Fn);
+    } else {
     for (auto *Load : Loads)
       instrumentLoadInst(LI, *Load, GEPs);
     for (auto *Store : Stores)
       instrumentStoreInst(LI, *Store, GEPs);
-    //}
+    }
 
     for (auto *GEP : GEPs)
       instrumentGEPInst(LI, *GEP);

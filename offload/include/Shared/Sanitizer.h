@@ -70,6 +70,9 @@ template <AllocationKind AK> struct SanitizerConfig {
 #define _AS_PTR(TY, AK)                                                        \
   TY [[clang::address_space(SanitizerConfig<AK>::ADDR_SPACE)]] *
 
+#define _AS_PTR_PTR(TY, AK)                                                        \
+  TY [[clang::address_space(SanitizerConfig<AK>::ADDR_SPACE)]] **
+
 template <AllocationKind AK> struct AllocationTy {
   _AS_PTR(void, AK) Start;
   typename ASTypes<AK>::INT_TY Length : SanitizerConfig<AK>::LENGTH_BITS;

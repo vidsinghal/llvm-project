@@ -576,29 +576,31 @@ ompx_check_range(void *SCEVMax, void *SCEVMin, int64_t AccessTypeSize,
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::noinline,
-  gnu::used, gnu::retain]] void **
-ompx_check_with_base_global_vec(void **Pointers, void **Starts,
+  gnu::used, gnu::retain]] char**
+ompx_check_with_base_global_vec(char ** Pointers, 
+                                char ** Starts,
                                 uint64_t *Lengths, uint32_t *Tags,
                                 uint64_t *Sizes, uint64_t *AccessIds,
                                 int64_t *SourceIds, uint64_t PC,
                                 uint64_t ArraySize) {
 
-  // for (int Index = 0; Index < ArraySize; Index++) {
-  //   void *P = (_AS_PTR(void, AllocationKind::GLOBAL))* Pointers;
-  //   void *Start = Starts[Index];
-  //   uint64_t Length = Lengths[Index];
-  //   uint32_t Tag = Tags[Index];
-  //   uint64_t Size = Sizes[Index];
-  //   uint64_t AccessId = AccessIds[Index];
-  //   uint64_t SourceId = SourceIds[Index];
+  //for (int Index = 0; Index < ArraySize; Index++) {
+    void* P =  *Pointers;//Pointers[Index];
+    void* Start = *Starts; //Starts[Index];
+    uint64_t Length = Lengths[0];
+    uint32_t Tag = Tags[0];
+    uint64_t Size = Sizes[0];
+    uint64_t AccessId = AccessIds[0];
+    uint64_t SourceId = SourceIds[0];
 
-  //   void* Ptr = ompx_check(P, Size, AccessId, SourceId, PC);
+    //_AS_PTR(void, AllocationKind::GLOBAL)
+    //Ptr = AllocationTracker<AllocationKind::GLOBAL>::checkWithBase(
+    //   P, Start, Length, Tag, Size, AccessId, SourceId, PC);
 
-  //   //_AS_PTR(void, AllocationKind::GLOBAL)
-  //   //Ptr = AllocationTracker<AllocationKind::GLOBAL>::checkWithBase(
-  //   //   P, Start, Length, Tag, Size, AccessId, SourceId, PC);
-  //   //Pointers[Index] = Ptr;
-  // }
+    void* Ptr = ompx_check(
+                   P, Size, AccessId, SourceId, PC);
+    *Pointers = (char*) Ptr;
+  //}
 
   return Pointers;
 }

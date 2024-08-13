@@ -7,12 +7,12 @@ typedef int IntTy;
 // void printArray(int *a, int Size);
 // void printArray(IntTy a[], int Size);
 
-IntTy *foo(int Size) {
+IntTy *foo(IntTy Size) {
 
   IntTy *a;
   a = (IntTy *)malloc(sizeof(IntTy) * Size);
 
-#pragma omp target teams map(from : a [0:Size])
+#pragma omp target teams map(from : a[0:Size])
   {
     for (IntTy I = 0; I < Size; I++) {
       a[I] = I;
@@ -24,7 +24,7 @@ IntTy *foo(int Size) {
   return a;
 }
 
-void printArray(int *a, int Size) {
+void printArray(IntTy *a, IntTy Size) {
 
   for (IntTy I = 0; I < Size; I++) {
     printf("a: %d ", a[I]);
