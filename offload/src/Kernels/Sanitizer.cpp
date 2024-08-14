@@ -15,12 +15,12 @@ __device__ void __sanitizer_register_host(void *P, uint64_t Bytes,
                                           uint64_t Slot);
 __device__ void __sanitizer_unregister_host(void *P);
 
-[[clang::disable_sanitizer_instrumentation]] __global__ void
+[[gnu::weak, clang::disable_sanitizer_instrumentation]] __global__ void
 __sanitizer_register(void *P, uint64_t Bytes, uint64_t Slot) {
   __sanitizer_register_host(P, Bytes, Slot);
 }
 
-[[clang::disable_sanitizer_instrumentation]] __global__ void
+[[gnu::weak, clang::disable_sanitizer_instrumentation]] __global__ void
 __sanitizer_unregister(void *P) {
   __sanitizer_unregister_host(P);
 }

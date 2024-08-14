@@ -1601,7 +1601,6 @@ struct AMDGPUStreamManagerTy final
   using ResourceRef = AMDGPUResourceRef<AMDGPUStreamTy>;
   using ResourcePoolTy = GenericDeviceResourceManagerTy<ResourceRef>;
 
-  GenericDeviceTy &Device;
   AMDGPUStreamManagerTy(GenericDeviceTy &Device, hsa_agent_t HSAAgent)
       : GenericDeviceResourceManagerTy(Device), Device(Device),
         OMPX_QueueTracking("LIBOMPTARGET_AMDGPU_HSA_QUEUE_BUSY_TRACKING", true),
@@ -3528,6 +3527,9 @@ void AMDGPUQueueTy::callbackError(hsa_status_t Status, hsa_queue_t *Source,
                                   void *Data) {
   auto &AMDGPUDevice = *reinterpret_cast<AMDGPUDeviceTy *>(Data);
 
+  auto *Device = reinterpret_cast<AMDGPUDeviceTy *>(Data);
+  Device->reportSanitizerError();
+
   if (Status == HSA_STATUS_ERROR_EXCEPTION) {
     auto KernelTraceInfoRecord =
         AMDGPUDevice.KernelLaunchTraces.getExclusiveAccessor();
@@ -3541,9 +3543,6 @@ void AMDGPUQueueTy::callbackError(hsa_status_t Status, hsa_queue_t *Source,
     ErrorReporter::reportTrapInKernel(AMDGPUDevice, *KernelTraceInfoRecord,
                                       AsyncInfoWrapperMatcher);
   }
-
-  auto *Device = reinterpret_cast<AMDGPUDeviceTy *>(Data);
-  Device->reportSanitizerError();
 
   auto Err = Plugin::check(Status, "Received error in queue %p: %s", Source);
   FATAL_MESSAGE(1, "%s", toString(std::move(Err)).data());

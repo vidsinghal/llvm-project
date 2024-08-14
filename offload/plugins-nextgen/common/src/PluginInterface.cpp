@@ -17,6 +17,7 @@
 #include "ErrorReporting.h"
 #include "GlobalHandler.h"
 #include "JIT.h"
+#include "Shared/EnvironmentVar.h"
 #include "Shared/Sanitizer.h"
 #include "Shared/Utils.h"
 #include "Utils/ELF.h"
@@ -939,24 +940,33 @@ GenericDeviceTy::loadBinary(GenericPluginTy &Plugin,
   if (auto Err = callGlobalConstructors(Plugin, *Image))
     return std::move(Err);
 
-  auto GetKernel = [&](StringRef Name) -> GenericKernelTy * {
-    auto KernelOrErr = constructKernel(Name.data());
-    if (Error Err = KernelOrErr.takeError()) {
-      REPORT("Failure to look up kernel: %s\n",
-             toString(std::move(Err)).data());
-      return nullptr;
+  auto *&SanitizerTrapInfo = SanitizerTrapInfos[Image];
+  GlobalTy TrapId("__sanitizer_trap_info_ptr", sizeof(SanitizerTrapInfo),
+                  &SanitizerTrapInfo);
+  GenericGlobalHandlerTy &GHandler = Plugin.getGlobalHandler();
+  if (GHandler.isSymbolInImage(*this, *Image, TrapId.getName())) {
+
+    SanitizerTrapInfo = reinterpret_cast<SanitizerTrapInfoTy *>(allocate(
+        sizeof(*SanitizerTrapInfo), &SanitizerTrapInfo, TARGET_ALLOC_HOST));
+    memset(SanitizerTrapInfo, '\0', sizeof(SanitizerTrapInfoTy));
+
+    if (auto Err = GHandler.writeGlobalToDevice(*this, *Image, TrapId))
+      return Err;
+    {
+      auto KernelOrErr = getKernel("__sanitizer_register", Image);
+      if (auto Err = KernelOrErr.takeError())
+        consumeError(std::move(Err));
+      else
+        addGPUSanNewFn(*KernelOrErr);
     }
-    GenericKernelTy &Kernel = *KernelOrErr;
-    if (auto Err = Kernel.init(*this, *Image)) {
-      REPORT("Failure to init kernel: %s\n", toString(std::move(Err)).data());
-      return nullptr;
+    {
+      auto KernelOrErr = getKernel("__sanitizer_unregister", Image);
+      if (auto Err = KernelOrErr.takeError())
+        consumeError(std::move(Err));
+      else
+        addGPUSanFreeFn(*KernelOrErr);
     }
-    return &Kernel;
-  };
-  if (GenericKernelTy *Kernel = GetKernel("__sanitizer_register"))
-    addGPUSanNewFn(*Kernel);
-  if (GenericKernelTy *Kernel = GetKernel("__sanitizer_unregister"))
-    addGPUSanFreeFn(*Kernel);
+  }
 
   // Return the pointer to the table of entries.
   return Image;
@@ -1034,16 +1044,6 @@ Error GenericDeviceTy::setupDeviceMemoryPool(GenericPluginTy &Plugin,
                          sizeof(DeviceMemoryPoolTrackingTy),
                          &DeviceMemoryPoolTracking);
   if (auto Err = GHandler.writeGlobalToDevice(*this, Image, TrackerGlobal))
-    return Err;
-
-  auto *&SanitizerTrapInfo = SanitizerTrapInfos[&Image];
-  SanitizerTrapInfo = reinterpret_cast<SanitizerTrapInfoTy *>(allocate(
-      sizeof(*SanitizerTrapInfo), &SanitizerTrapInfo, TARGET_ALLOC_HOST));
-  memset(SanitizerTrapInfo, '\0', sizeof(SanitizerTrapInfoTy));
-
-  GlobalTy TrapId("__sanitizer_trap_info_ptr", sizeof(SanitizerTrapInfo),
-                  &SanitizerTrapInfo);
-  if (auto Err = GHandler.writeGlobalToDevice(*this, Image, TrapId))
     return Err;
 
   // Create the metainfo of the device environment global.
@@ -2404,32 +2404,17 @@ void GPUSanTy::checkAndReportError() {
             Green(), STI->PtrSlot, STI->PtrTag, STI->PtrKind, STI->AllocationId,
             STI->AllocationTag, STI->AllocationKind, Default());
 
-    AllocationInfoTy *AllocationInfo = nullptr;
-    if (STI->AllocationStart) {
-      auto AllocationTraceMap = Device.AllocationTraces.getExclusiveAccessor();
-      AllocationInfo = (*AllocationTraceMap)[STI->AllocationStart];
-    }
-    if (AllocationInfo) {
-      fprintf(stderr, "\nAllocated at\n");
-      fprintf(stderr, "%s", AllocationInfo->AllocationTrace.c_str());
-
-      if (!AllocationInfo->DeallocationTrace.empty()) {
-        fprintf(stderr, "\nDeallocated at\n");
-        fprintf(stderr, "%s", AllocationInfo->DeallocationTrace.c_str());
-      }
-    }
-
   };
 
   switch (STI->ErrorCode) {
   case SanitizerTrapInfoTy::None:
     llvm_unreachable("Unexpected exception");
   case SanitizerTrapInfoTy::ExceedsLength:
-    fprintf(stderr, "%sERROR: OffloadSanitizer %s %d\n%s", Red(),
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s %lu\n%s", Red(),
             "exceeds length", STI->PtrSlot, Default());
     break;
   case SanitizerTrapInfoTy::ExceedsSlots:
-    fprintf(stderr, "%sERROR: OffloadSanitizer %s %d\n%s", Red(),
+    fprintf(stderr, "%sERROR: OffloadSanitizer %s %lu\n%s", Red(),
             "exceeds slots", STI->PtrSlot, Default());
     break;
   case SanitizerTrapInfoTy::PointerOutsideAllocation:
@@ -2449,7 +2434,7 @@ void GPUSanTy::checkAndReportError() {
     DiagnoseAccess("use-after-free");
     break;
   case SanitizerTrapInfoTy::MemoryLeak:
-    fprintf(stderr, "%sERROR: OffloadSanitizer memory leak at slot %d\n%s",
+    fprintf(stderr, "%sERROR: OffloadSanitizer memory leak at slot %lu\n%s",
             Red(), STI->PtrSlot, Default());
     break;
   case SanitizerTrapInfoTy::GarbagePointer:

@@ -987,7 +987,7 @@ struct GenericDeviceTy : public DeviceAllocatorTy {
     auto AllocationTraceMap = AllocationTraces.getExclusiveAccessor();
     for (auto &It : *AllocationTraceMap) {
       if (It.first <= DevicePtr &&
-          advanceVoidPtr(It.first, It.second->Size) > DevicePtr)
+          utils::advancePtr(It.first, It.second->Size) > DevicePtr)
         return It.second;
     }
     return nullptr;

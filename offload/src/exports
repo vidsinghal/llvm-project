@@ -75,9 +75,6 @@ VERS1.0 {
     __llvmPushCallConfiguration;
     __llvmPopCallConfiguration;
     llvmLaunchKernel;
-    ompx_new_allocation_host;
-    ompx_free_allocation_host;
-    ompx_register_image_functions;
   local:
     *;
 };

@@ -215,11 +215,6 @@ void *targetAllocExplicit(size_t Size, int64_t DeviceNum, int Kind,
     return Rc;
   }
 
-  if (checkDeviceAndCtors(DeviceNum, nullptr)) {
-    DP("Not offloading to device %" PRId64 "\n", DeviceNum);
-    return Rc;
-  }
-
   auto DeviceOrErr = PM->getDevice(DeviceNum);
   if (!DeviceOrErr)
     FATAL_MESSAGE(DeviceNum, "%s", toString(DeviceOrErr.takeError()).c_str());
