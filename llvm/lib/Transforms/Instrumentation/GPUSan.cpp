@@ -1269,7 +1269,8 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
   SmallVector<PtrOrigin> PointerOrigins;
 
   IRBuilder<> IRB(AccessCausingInstructionInABasicBlock.front());
-
+  
+  //Type *PtrOpType; 
   for (Instruction *I : AccessCausingInstructionInABasicBlock) {
 
     int PtrIdx = -1;
@@ -1289,6 +1290,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     }
 
     Value *PtrOp = I->getOperand(PtrIdx);
+    //PtrOpType = PtrOp->getType();
     const Value *Object = nullptr;
     PtrOrigin PO = getPtrOrigin(LI, PtrOp, &Object);
 
@@ -1368,7 +1370,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     auto TySize = DL.getTypeStoreSize(AccessTy);
     assert(!TySize.isScalable());
     Value *Size = ConstantInt::get(Int64Ty, TySize.getFixedValue());
-
+   
     Value *PlainPtrOp =
         IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
     if (Start) {
@@ -1422,6 +1424,17 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
   BasicBlock &EntryBlock = Fn.getEntryBlock();
   auto EntryBlockEnd = (--EntryBlock.end());
 
+  // // Create the malloc function declaration
+  // FunctionType *MallocType = llvm::FunctionType::get(
+  //       Int8PtrType, // Return type: i8*
+  //       {llvm::Type::getInt64Ty(Ctx)}, // Parameter type: i64
+  //       false // Not variadic
+  //   );
+  //   llvm::Function *MallocFunc = llvm::Function::Create(
+  //       MallocType,
+  //       llvm::Function::ExternalLinkage,
+  //       "malloc", M );
+
   // Sanitize multiple pointers in one call.
   if (!PlainPtrOpsBase.empty()) {
     CallInst *CB;
@@ -1429,11 +1442,19 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     // ArrayType for array of plain pointer ops from base
     auto *PlainPtrOpsBaseTy = ArrayType::get(PtrTy, NumElements);
     // Make Alloca to array type
-    unsigned int Addr = 0;
+    unsigned int Addr = 5;
     AllocaInst *PlainPtrOpsBaseArr = IRB.CreateAlloca(PlainPtrOpsBaseTy, Addr);
     PlainPtrOpsBaseArr->moveBefore(&*EntryBlockEnd);
 
-    //Type *IntPtrPtrTy = PtrTy->getPointerTo();
+    //create Malloc call 
+    // Value *AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(PtrTy) * PlainPtrOpsBase.size());
+    // CallInst *MallocCallPtrOp = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallPtrOp->moveBefore(&*EntryBlockEnd);
+    // Type *IntPtrPtrTy = PtrTy->getPointerTo();
+    // Instruction *PlainPtrOpsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallPtrOp, IntPtrPtrTy));
+    // PlainPtrOpsBaseArr->moveAfter(MallocCallPtrOp);
+
+
     //Constant *NullVal = ConstantAggregateZero::get(PlainPtrOpsBaseTy);
     //GlobalVariable *PlainPtrOpsBaseArr = new GlobalVariable(M, PlainPtrOpsBaseTy, false, GlobalValue::ExternalLinkage, NullVal,"", nullptr, GlobalValue::NotThreadLocal, 0);
     int Index = 0;
@@ -1452,6 +1473,13 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     //NullVal = ConstantAggregateZero::get(StartsBaseTy);
     //GlobalVariable *StartsBaseArr = new GlobalVariable(M, StartsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
 
+    //malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(PtrTy) * StartsBase.size());
+    // CallInst *MallocCallStarts = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallStarts->moveBefore(&*EntryBlockEnd);
+    // Instruction *StartsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallStarts, IntPtrPtrTy));
+    // StartsBaseArr->moveAfter(MallocCallStarts);
+
     Index = 0;
     for (auto &Element : StartsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1466,6 +1494,16 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     LengthsBaseArr->moveBefore(&*EntryBlockEnd);
     //NullVal = ConstantAggregateZero::get(LengthsBaseTy);
     //GlobalVariable *LengthsBaseArr = new GlobalVariable(M, LengthsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+    
+    //create Malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(Int64Ty) * LengthsBase.size());
+    // CallInst *MallocCallLengths = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallLengths->moveBefore(&*EntryBlockEnd);
+    // Type *PtrToType = Int64Ty->getPointerTo();
+    // Instruction *LengthsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallLengths, PtrToType));
+    // LengthsBaseArr->moveAfter(MallocCallLengths);
+    
+    
     Index = 0;
     for (auto &Element : LengthsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1480,6 +1518,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     TagsBaseArr->moveBefore(&*EntryBlockEnd);
     //NullVal = ConstantAggregateZero::get(TagsBaseTy);
     //GlobalVariable *TagsBaseArr = new GlobalVariable(M, TagsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+    
+    //create Malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(Int32Ty) * TagsBase.size());
+    // CallInst *MallocCallTags = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallTags->moveBefore(&*EntryBlockEnd);
+    // PtrToType = Int32Ty->getPointerTo();
+    // Instruction *TagsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallTags, PtrToType));
+    // TagsBaseArr->moveAfter(MallocCallTags);
+    
     Index = 0;
     for (auto &Element : TagsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1494,6 +1541,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     SizesBaseArr->moveBefore(&*EntryBlockEnd);
     //NullVal = ConstantAggregateZero::get(SizesBaseTy);
     //GlobalVariable *SizesBaseArr = new GlobalVariable(M, SizesBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+    
+    //create Malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(Int64Ty) * SizesBase.size());
+    // CallInst *MallocCallSizes = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallSizes->moveBefore(&*EntryBlockEnd);
+    // PtrToType = Int64Ty->getPointerTo();
+    // Instruction *SizesBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallSizes, PtrToType));
+    // SizesBaseArr->moveAfter(MallocCallSizes);
+    
     Index = 0;
     for (auto &Element : SizesBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1508,6 +1564,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     AccessIdsBaseArr->moveBefore(&*EntryBlockEnd);
     //NullVal = ConstantAggregateZero::get(AccessIdsBaseTy);
     //GlobalVariable *AccessIdsBaseArr = new GlobalVariable(M, AccessIdsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+    
+     //create Malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(Int64Ty) * AccessIdsBase.size());
+    // CallInst *MallocCallAccess = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallAccess->moveBefore(&*EntryBlockEnd);
+    // PtrToType = Int64Ty->getPointerTo();
+    // Instruction *AccessIdsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallAccess, PtrToType));
+    // AccessIdsBaseArr->moveAfter(MallocCallAccess);
+    
     Index = 0;
     for (auto &Element : AccessIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1522,6 +1587,15 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     SourceIdsBaseArr->moveBefore(&*EntryBlockEnd);
     //NullVal = ConstantAggregateZero::get(SourceIdsBaseTy);
     //GlobalVariable *SourceIdsBaseArr = new GlobalVariable(M, SourceIdsBaseTy, false, GlobalValue::ExternalLinkage, NullVal, "", nullptr, GlobalValue::NotThreadLocal, 0);
+    
+    //create Malloc call 
+    // AllocSize = IRB.getInt64(M.getDataLayout().getTypeAllocSize(Int64Ty) * SourceIdsBase.size());
+    // CallInst *MallocCallSources = IRB.CreateCall(MallocFunc, AllocSize);
+    // MallocCallSources->moveBefore(&*EntryBlockEnd);
+    // PtrToType = Int64Ty->getPointerTo();
+    // Instruction *SourceIdsBaseArr = dyn_cast<Instruction>(IRB.CreateBitCast(MallocCallSources, PtrToType));
+    // SourceIdsBaseArr->moveAfter(MallocCallSources);
+    
     Index = 0;
     for (auto &Element : SourceIdsBase) {
       StoreInst *Store = IRB.CreateStore(
@@ -1571,8 +1645,12 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       //    createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
       //               PtrOp->getName() + ".unpack");
 
+      errs() << "PtrOp Type" << *PtrOp->getType() << "\n";
+
+
       I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
                                 Load, PtrOp->getType()));
+                                
 
       Index++;
     }
@@ -1582,7 +1660,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
     CallInst *CB;
     uint64_t NumElements = PlainPtrOps.size();
     auto *PlainPtrOpsTy = ArrayType::get(PtrTy, NumElements);
-    unsigned int Addr = 0;
+    unsigned int Addr = 5;
     auto *PlainPtrOpsArr = IRB.CreateAlloca(PlainPtrOpsTy, Addr);
     PlainPtrOpsArr->moveBefore(&*EntryBlockEnd);
     //auto *NullVal = ConstantAggregateZero::get(PlainPtrOpsTy);
@@ -1662,8 +1740,7 @@ void GPUSanImpl::instrumentMultipleAccessPerBasicBlock(
       //    createCall(IRB, getUnpackFn(PO), {PlainPtrOp, getPC(IRB)},
       //               PtrOp->getName() + ".unpack");
 
-      I->setOperand(PtrIdx, IRB.CreatePointerBitCastOrAddrSpaceCast(
-                                Load, PtrOp->getType()));
+      I->setOperand(PtrIdx, Load);
 
       Index++;
     }
@@ -1792,50 +1869,50 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
       }
     }
 
-    // Hoist all address computation in a basic block
-    auto GEPCopy = GEPs;
-    while (!GEPCopy.empty()) {
-      auto *Inst = GEPCopy.pop_back_val();
-      Instruction *LatestDependency = &*Inst->getParent()->begin();
-      for (auto *It = Inst->op_begin(); It != Inst->op_end(); It++) {
+    // // Hoist all address computation in a basic block
+    // auto GEPCopy = GEPs;
+    // while (!GEPCopy.empty()) {
+    //   auto *Inst = GEPCopy.pop_back_val();
+    //   Instruction *LatestDependency = &*Inst->getParent()->begin();
+    //   for (auto *It = Inst->op_begin(); It != Inst->op_end(); It++) {
 
-        if (Instruction *ToInstruction = dyn_cast<Instruction>(It)) {
+    //     if (Instruction *ToInstruction = dyn_cast<Instruction>(It)) {
 
-          if (!LatestDependency) {
-            LatestDependency = ToInstruction;
-            continue;
-          }
+    //       if (!LatestDependency) {
+    //         LatestDependency = ToInstruction;
+    //         continue;
+    //       }
 
-          if (ToInstruction->getParent() != Inst->getParent())
-            continue;
+    //       if (ToInstruction->getParent() != Inst->getParent())
+    //         continue;
 
-          if (LatestDependency->comesBefore(ToInstruction))
-            LatestDependency = ToInstruction;
-        }
-      }
+    //       if (LatestDependency->comesBefore(ToInstruction))
+    //         LatestDependency = ToInstruction;
+    //     }
+    //   }
 
-      Inst->moveAfter(LatestDependency);
-    }
+    //   Inst->moveAfter(LatestDependency);
+    // }
 
-    bool CanMergeChecks = true;
-    for (auto *GEP : GEPs) {
+    // bool CanMergeChecks = true;
+    // for (auto *GEP : GEPs) {
 
-      if (GEP->comesBefore(LoadsStores.front())) {
-        CanMergeChecks = CanMergeChecks && true;
-      } else {
-        CanMergeChecks = CanMergeChecks && false;
-      }
-    }
+    //   if (GEP->comesBefore(LoadsStores.front())) {
+    //     CanMergeChecks = CanMergeChecks && true;
+    //   } else {
+    //     CanMergeChecks = CanMergeChecks && false;
+    //   }
+    // }
 
     // check if you can merge various pointer checks.
-    if (CanMergeChecks) {
-     instrumentMultipleAccessPerBasicBlock(LI, LoadsStores, Fn);
-    } else {
+    //if (CanMergeChecks) {
+    // instrumentMultipleAccessPerBasicBlock(LI, LoadsStores, Fn);
+    //} else {
     for (auto *Load : Loads)
       instrumentLoadInst(LI, *Load, GEPs);
     for (auto *Store : Stores)
       instrumentStoreInst(LI, *Store, GEPs);
-    }
+    //}
 
     for (auto *GEP : GEPs)
       instrumentGEPInst(LI, *GEP);

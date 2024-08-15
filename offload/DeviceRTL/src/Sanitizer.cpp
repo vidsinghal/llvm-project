@@ -156,17 +156,17 @@ template <AllocationKind AK> struct AllocationTracker {
     if constexpr (AK == AllocationKind::LOCAL)
       if (Length == 0)
         Length = getAllocation<AK>(AP, AccessId, PC).Length;
-    if constexpr (AK == AllocationKind::GLOBAL)
-      if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
-        __sanitizer_trap_info_ptr->garbagePointer<AK>(AP, (void *)P, SourceId,
-                                                      PC);
+    // if constexpr (AK == AllocationKind::GLOBAL)
+    //   if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+    //     __sanitizer_trap_info_ptr->garbagePointer<AK>(AP, (void *)P, SourceId,
+    //                                                   PC);
     int64_t Offset = AP.Offset;
-    if (OMP_UNLIKELY(
-            Offset > Length - Size ||
-            (SanitizerConfig<AK>::useTags() && Tag != AP.AllocationTag))) {
-      __sanitizer_trap_info_ptr->accessError<AK>(AP, Size, AccessId, SourceId,
-                                                 PC);
-    }
+    // if (OMP_UNLIKELY(
+    //         Offset > Length - Size ||
+    //         (SanitizerConfig<AK>::useTags() && Tag != AP.AllocationTag))) {
+    //   __sanitizer_trap_info_ptr->accessError<AK>(AP, Size, AccessId, SourceId,
+    //                                              PC);
+    // }
     return utils::advancePtr(Start, Offset);
   }
 
@@ -196,7 +196,7 @@ template <AllocationKind AK> struct AllocationTracker {
                      _AS_PTR(void, AK) StartAddress, int64_t AllocationLength,
                      uint32_t Tag, int64_t AccessTypeSize, int64_t AccessId,
                      int64_t SourceId, uint64_t PC) {
-
+    printf("Hello World!\n");
     AllocationPtrTy<AK> APSCEVMax = AllocationPtrTy<AK>::get(SCEVMax);
     AllocationPtrTy<AK> APSCEVMin = AllocationPtrTy<AK>::get(SCEVMin);
     if constexpr (AK == AllocationKind::LOCAL)
@@ -304,16 +304,33 @@ AllocationArrayTy<AK>
 static void checkForMagic(bool IsGlobal, void *P, int64_t SourceId,
                           uint64_t PC) {
   if (IsGlobal) {
-    auto AP = AllocationPtrTy<AllocationKind::GLOBAL>::get(P);
-    if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
-      __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::GLOBAL>(
-          AP, P, SourceId, PC);
+    // auto AP = AllocationPtrTy<AllocationKind::GLOBAL>::get(P);
+    // if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+    //   __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::GLOBAL>(
+    //       AP, P, SourceId, PC);
   } else {
     auto AP = AllocationPtrTy<AllocationKind::LOCAL>::get(P);
     if (AP.Magic != SanitizerConfig<AllocationKind::LOCAL>::MAGIC)
       __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::LOCAL>(
           AP, P, SourceId, PC);
   }
+}
+
+static void checkForMagic2(bool IsGlobal, void *P, int64_t SourceId,
+                           int64_t AccessId, 
+                          uint64_t PC) {
+  //printf("HELLO THERE!\n");
+  //if (IsGlobal) {
+    auto AP = AllocationPtrTy<AllocationKind::GLOBAL>::get(P);
+    if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+      __sanitizer_trap_info_ptr->garbagePointer2<AllocationKind::GLOBAL>(
+          AP, P, SourceId,AccessId, PC);
+  //} else {
+  //  auto AP = AllocationPtrTy<AllocationKind::LOCAL>::get(P);
+  //  if (AP.Magic != SanitizerConfig<AllocationKind::LOCAL>::MAGIC)
+  //    __sanitizer_trap_info_ptr->garbagePointer2<AllocationKind::LOCAL>(
+  //        AP, P, SourceId, AccessId, PC);
+ // }
 }
 
 extern "C" {
@@ -427,7 +444,7 @@ ompx_gep(void *P, uint64_t Offset, int64_t SourceId) {
 ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
            uint64_t PC) {
   bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, PC);
+  checkForMagic2(IsGlobal, P, SourceId, AccessId, PC);
   if (IsGlobal)
     return (void *)ompx_check_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
                                      Size, AccessId, SourceId, PC);
@@ -477,7 +494,7 @@ ompx_check_void_global(_AS_PTR(void, AllocationKind::GLOBAL) P, uint64_t Size,
 ompx_check_void(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
                 uint64_t PC) {
   bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, PC);
+  checkForMagic2(IsGlobal, P, SourceId, AccessId, PC);
   if (IsGlobal)
     return ompx_check_void_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
                                   Size, AccessId, SourceId, PC);
@@ -503,6 +520,7 @@ ompx_check_with_base_void_global(_AS_PTR(void, AllocationKind::GLOBAL) P,
                                  uint64_t Length, uint32_t Tag, uint64_t Size,
                                  uint64_t AccessId, int64_t SourceId,
                                  uint64_t PC) {
+  printf("Hello World!\n");
   return AllocationTracker<AllocationKind::GLOBAL>::checkWithBaseVoid(
       P, Start, Length, Tag, Size, AccessId, SourceId, PC);
 }
@@ -518,6 +536,8 @@ ompx_check_range_with_base_global(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
                                   int64_t AccessTypeSize, int64_t AccessId,
                                   int64_t SourceId, uint64_t PC) {
 
+    printf("Hello World!\n");
+
   return AllocationTracker<AllocationKind::GLOBAL>::checkRangeWithBase(
       SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
       AccessId, SourceId, PC);
@@ -532,7 +552,7 @@ ompx_check_range_with_base_local(_AS_PTR(void, AllocationKind::LOCAL) SCEVMax,
                                  int64_t AllocationLength, uint32_t Tag,
                                  int64_t AccessTypeSize, int64_t AccessId,
                                  int64_t SourceId, uint64_t PC) {
-
+  printf("Hello World!\n");
   return AllocationTracker<AllocationKind::LOCAL>::checkRangeWithBase(
       SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
       AccessId, SourceId, PC);
@@ -562,8 +582,8 @@ ompx_check_range(void *SCEVMax, void *SCEVMin, int64_t AccessTypeSize,
                  int64_t AccessId, int64_t SourceId, uint64_t PC) {
   bool IsGlobalMax = IS_GLOBAL(SCEVMax);
   bool IsGlobalMin = IS_GLOBAL(SCEVMin);
-  checkForMagic(IsGlobalMax, SCEVMax, SourceId, PC);
-  checkForMagic(IsGlobalMin, SCEVMin, SourceId, PC);
+  checkForMagic2(IsGlobalMax, SCEVMax, SourceId, AccessId, PC);
+  checkForMagic2(IsGlobalMin, SCEVMin, SourceId, AccessId, PC);
   if (IsGlobalMax && IsGlobalMin)
     return ompx_check_range_global(
         (_AS_PTR(void, AllocationKind::GLOBAL))SCEVMax,
@@ -575,31 +595,33 @@ ompx_check_range(void *SCEVMax, void *SCEVMin, int64_t AccessTypeSize,
                                 AccessTypeSize, AccessId, SourceId, PC);
 }
 
-[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::noinline,
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] char**
-ompx_check_with_base_global_vec(char ** Pointers, 
-                                char ** Starts,
-                                uint64_t *Lengths, uint32_t *Tags,
-                                uint64_t *Sizes, uint64_t *AccessIds,
-                                int64_t *SourceIds, uint64_t PC,
+ompx_check_with_base_global_vec(char **Pointers, 
+                                char **Starts,
+                                uint64_t *Lengths,
+                                uint32_t *Tags,
+                                uint64_t *Sizes,
+                                uint64_t *AccessIds,
+                                int64_t  *SourceIds,
+                                uint64_t PC,
                                 uint64_t ArraySize) {
 
   //for (int Index = 0; Index < ArraySize; Index++) {
-    void* P =  *Pointers;//Pointers[Index];
-    void* Start = *Starts; //Starts[Index];
-    uint64_t Length = Lengths[0];
-    uint32_t Tag = Tags[0];
-    uint64_t Size = Sizes[0];
-    uint64_t AccessId = AccessIds[0];
-    uint64_t SourceId = SourceIds[0];
+    //void* P = *Pointers; //*(Pointers + Index*8);
+    //void* Start = *(Starts + Index*8);
+    //uint64_t Length = Lengths[Index];
+    //uint32_t Tag = Tags[Index];
+    //uint64_t Size = Sizes[Index];
+    //uint64_t AccessId = AccessIds[Index];
+    //uint64_t SourceId = SourceIds[Index];
 
     //_AS_PTR(void, AllocationKind::GLOBAL)
     //Ptr = AllocationTracker<AllocationKind::GLOBAL>::checkWithBase(
     //   P, Start, Length, Tag, Size, AccessId, SourceId, PC);
-
-    void* Ptr = ompx_check(
-                   P, Size, AccessId, SourceId, PC);
-    *Pointers = (char*) Ptr;
+    //void* Ptr = ompx_check(
+    //               P, Size, AccessId, SourceId, PC);
+    //*Pointers = (char*) Ptr;
   //}
 
   return Pointers;
