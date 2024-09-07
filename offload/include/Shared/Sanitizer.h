@@ -24,7 +24,8 @@ int64_t __san_get_location_value();
 #define INLINE gnu::always_inline
 #define NOINLINE gnu::noinline
 
-enum class AllocationKind { LOCAL, GLOBAL, LAST = GLOBAL };
+enum class AllocationKind { LOCAL, GLOBAL, SHARED, LAST = SHARED };
+constexpr uint32_t FAKE_PTR_KIND_BITS = 2;
 
 template <AllocationKind AK> struct ASTypes {
   using INT_TY = uint64_t;
@@ -33,22 +34,36 @@ template <AllocationKind AK> struct ASTypes {
 template <> struct ASTypes<AllocationKind::LOCAL> {
   using INT_TY = uint32_t;
 };
+template <> struct ASTypes<AllocationKind::SHARED> {
+  using INT_TY = uint32_t;
+};
 #pragma omp end declare variant
 
+template <AllocationKind AK> struct ASAddrSpace {};
+template <> struct ASAddrSpace<AllocationKind::GLOBAL> {
+  static constexpr uint32_t ADDR_SPACE = 0;
+};
+template <> struct ASAddrSpace<AllocationKind::LOCAL> {
+  static constexpr uint32_t ADDR_SPACE = 5;
+};
+template <> struct ASAddrSpace<AllocationKind::SHARED> {
+  static constexpr uint32_t ADDR_SPACE = 3;
+};
+
 template <AllocationKind AK> struct SanitizerConfig {
-  static constexpr uint32_t ADDR_SPACE = AK == AllocationKind::GLOBAL ? 0 : 5;
+  static constexpr uint32_t ADDR_SPACE = ASAddrSpace<AK>::ADDR_SPACE;
   static constexpr uint32_t ADDR_SPACE_PTR_SIZE =
       sizeof(typename ASTypes<AK>::INT_TY) * 8;
 
   static constexpr uint32_t NUM_ALLOCATION_ARRAYS =
-      AK == AllocationKind::GLOBAL ? 1 : (1024 * 1024 * 2);
-  static constexpr uint32_t TAG_BITS = AK == AllocationKind::GLOBAL ? 1 : 8;
+      AK == AllocationKind::LOCAL ? (1024 * 1024 * 2) : 1;
+  static constexpr uint32_t TAG_BITS = AK == AllocationKind::LOCAL ? 8 : 1;
   static constexpr uint32_t MAGIC_BITS = 3;
   static constexpr uint32_t MAGIC = 0b101;
 
   static constexpr uint32_t OBJECT_BITS = AK == AllocationKind::GLOBAL ? 10 : 7;
   static constexpr uint32_t SLOTS = (1 << (OBJECT_BITS));
-  static constexpr uint32_t KIND_BITS = 1;
+  static constexpr uint32_t KIND_BITS = FAKE_PTR_KIND_BITS;
   static constexpr uint32_t Id_BITS = 9 - KIND_BITS;
 
   static constexpr uint32_t LENGTH_BITS =
@@ -104,6 +119,7 @@ template <AllocationKind AK> struct AllocationPtrTy {
 };
 #pragma omp begin declare variant match(device = {arch(amdgcn)})
 static_assert(sizeof(AllocationPtrTy<AllocationKind::LOCAL>) * 8 == 32);
+static_assert(sizeof(AllocationPtrTy<AllocationKind::SHARED>) * 8 == 32);
 #pragma omp end declare variant
 
 union TypePunUnion {

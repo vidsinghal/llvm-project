@@ -2250,8 +2250,7 @@ int32_t GenericPluginTy::get_function(__tgt_device_binary Binary,
 
 Error GPUSanTy::notifyDataMapped(void *DevicePtr, uint64_t Size,
                                  void *&FakeHstPtr) {
-  FakeHstPtr = nullptr;
-  if (NewFns.empty())
+  if (NewFns.empty() || FakeHstPtr)
     return Plugin::success();
   uint64_t Slot = SlotCnt--;
   FakeHstPtr = __offload_get_new_sanitizer_ptr(Slot);
@@ -2444,19 +2443,34 @@ void GPUSanTy::checkAndReportError() {
   fflush(stderr);
 }
 
+Error GPUSanTy::readFakePtrFromDevice(const char *GlobalName, void *&FakeHstPtr,
+                                      SmallVector<DeviceImageTy *> &Images) {
+  auto ShadowName = getShadowName(GlobalName);
+  GenericGlobalHandlerTy &GHandler = Device.Plugin.getGlobalHandler();
+
+  void *FakePtrVal = nullptr;
+  GlobalTy ShadowGlobal(ShadowName, sizeof(void *), &FakePtrVal);
+
+  for (auto Img : Images) {
+    if (GHandler.isSymbolInImage(Device, *Img, ShadowName)) {
+      if (auto Err = GHandler.readGlobalFromDevice(Device, *Img, ShadowGlobal))
+        return Err;
+    }
+  }
+
+  FakeHstPtr = FakePtrVal;
+  return Plugin::success();
+}
+
 Error GPUSanTy::transferFakePtrToDevice(const char *GlobalName,
                                         void *FakeHstPtr,
                                         SmallVector<DeviceImageTy *> &Images) {
   if (!FakeHstPtr)
     return Plugin::success();
 
-  std::string ShadowName("__san.global.");
-  ShadowName.append(GlobalName);
-
+  auto ShadowName = getShadowName(GlobalName);
   GenericGlobalHandlerTy &GHandler = Device.Plugin.getGlobalHandler();
   GlobalTy ShadowGlobal(ShadowName, sizeof(void *), &FakeHstPtr);
-
-  int imgCount = 0;
   for (auto Img : Images) {
     if (GHandler.isSymbolInImage(Device, *Img, ShadowName))
       return GHandler.writeGlobalToDevice(Device, *Img, ShadowGlobal);

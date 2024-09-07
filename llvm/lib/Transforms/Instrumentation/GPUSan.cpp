@@ -104,6 +104,7 @@ namespace {
 enum PtrOrigin {
   UNKNOWN,
   LOCAL,
+  SHARED,
   GLOBAL,
   SYSTEM,
   NONE,
@@ -117,6 +118,8 @@ static std::string getSuffix(PtrOrigin PO) {
     return "_local";
   case GLOBAL:
     return "_global";
+  case SHARED:
+    return "_shared";
   default:
     break;
   }
@@ -179,9 +182,14 @@ private:
 
   // Function used by access instrumentation to replace all references to
   // user global variables with shadow variable references
-  Value *replaceUserGlobals(IRBuilder<> &IRB, GlobalVariable *ShadowGlobal,
-                            Value *PtrOp, Value *&GlobalRef,
-                            Instruction *InsertBefore = nullptr);
+  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, ConstantExpr *C,
+                            Instruction *InsertBefore,
+                            Value **GlobalRef = nullptr);
+  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, Instruction *Inst,
+                            Value **GlobalRef = nullptr);
+  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, Value *PtrOp,
+                            Instruction *InsertBefore,
+                            Value **GlobalRef = nullptr);
 
   void addCtor();
   void addDtor();
@@ -199,6 +207,25 @@ private:
   // Global (un)registration functions
   Function *createShadowGlobalRegisterFn();
   Function *createShadowGlobalUnregisterFn();
+
+  void registerGlobal(IRBuilder<> &IRB, GlobalVariable *U, GlobalVariable *S);
+  void unregisterGlobal(IRBuilder<> &IRB, GlobalVariable *U, GlobalVariable *S);
+
+  // Shared memory ctor/dtor
+  Function *createSharedCtor();
+
+  GlobalVariable *lookupUserGlobal(const Value *V) {
+    if (!V)
+      return nullptr;
+    auto *GlobalCast = dyn_cast<GlobalVariable>(V);
+    if (GlobalCast && UserGlobals.contains(GlobalCast)) {
+      return UserGlobals.lookup(GlobalCast);
+    }
+    return nullptr;
+  }
+
+  bool hasUserGlobals();
+  bool hasUserShared();
 
   Value *getPC(IRBuilder<> &IRB);
   Value *getFunctionName(IRBuilder<> &IRB);
@@ -223,6 +250,8 @@ private:
   PointerType *getPtrTy(PtrOrigin PO) {
     if (PO == PtrOrigin::LOCAL)
       return PointerType::get(Ctx, 5);
+    if (PO == PtrOrigin::SHARED)
+      return PointerType::get(Ctx, 3);
     return PtrTy;
   }
 
@@ -307,20 +336,22 @@ private:
 
   Type *VoidTy = Type::getVoidTy(Ctx);
   Type *IntptrTy = M.getDataLayout().getIntPtrType(Ctx);
+  Type *SharedIntptrTy = M.getDataLayout().getIntPtrType(Ctx, 3);
   PointerType *PtrTy = PointerType::getUnqual(Ctx);
+  IntegerType *BoolTy = Type::getInt1Ty(Ctx);
   IntegerType *Int8Ty = Type::getInt8Ty(Ctx);
   IntegerType *Int32Ty = Type::getInt32Ty(Ctx);
   IntegerType *Int64Ty = Type::getInt64Ty(Ctx);
 
   const DataLayout &DL = M.getDataLayout();
 
-  FunctionCallee NewFn[3];
-  FunctionCallee GEPFn[3];
-  FunctionCallee FreeFn[3];
-  FunctionCallee CheckFn[3];
-  FunctionCallee CheckWithBaseFn[3];
-  FunctionCallee AllocationInfoFn[3];
-  FunctionCallee UnpackFn[3];
+  FunctionCallee NewFn[4];
+  FunctionCallee GEPFn[4];
+  FunctionCallee FreeFn[4];
+  FunctionCallee CheckFn[4];
+  FunctionCallee CheckWithBaseFn[4];
+  FunctionCallee AllocationInfoFn[4];
+  FunctionCallee UnpackFn[4];
   FunctionCallee LifetimeEndFn;
   FunctionCallee LifetimeStartFn;
   FunctionCallee FreeNLocalFn;
@@ -549,6 +580,11 @@ void GPUSanImpl::getAllocationInfo(Function &Fn, PtrOrigin PO, Value &Object,
   Tag = It.Tag;
 }
 
+constexpr uint32_t SHARED_ADDRSPACE = 3;
+bool isSharedGlobal(const GlobalVariable &G) {
+  return G.getAddressSpace() == SHARED_ADDRSPACE;
+}
+
 PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
                                    const Value **Object) {
   SmallVector<const Value *> Objects;
@@ -560,8 +596,8 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
     PtrOrigin ObjPO = HasAllocas ? UNKNOWN : GLOBAL;
     if (isa<AllocaInst>(Obj)) {
       ObjPO = LOCAL;
-    } else if (isa<GlobalVariable>(Obj)) {
-      ObjPO = GLOBAL;
+    } else if (auto *Global = dyn_cast<GlobalVariable>(Obj)) {
+      ObjPO = isSharedGlobal(*Global) ? SHARED : GLOBAL;
     } else if (auto *II = dyn_cast<IntrinsicInst>(Obj)) {
       if (II->getIntrinsicID() == Intrinsic::amdgcn_implicitarg_ptr ||
           II->getIntrinsicID() == Intrinsic::amdgcn_dispatch_ptr)
@@ -573,6 +609,8 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
             ObjPO = GLOBAL;
           else if (Callee->getName().ends_with("_local"))
             ObjPO = LOCAL;
+          else if (Callee->getName().ends_with("_shared"))
+            ObjPO = SHARED;
         }
     } else if (auto *Arg = dyn_cast<Argument>(Obj)) {
       if (Arg->getParent()->hasFnAttribute("kernel"))
@@ -588,8 +626,8 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
 }
 
 constexpr StringRef ShadowGlobalPrefix = "__san.global.";
-constexpr StringRef GlobalIgnorePrefix[] = {"__omp_", "llvm.", "_Z",
-                                            "__sanitizer_", "__san."};
+constexpr StringRef ShadowSharedPrefix = "__san.shared.";
+constexpr StringRef GlobalIgnorePrefix[] = {"llvm.", "__sanitizer_", "__san."};
 
 bool isUserGlobal(const GlobalVariable &G) {
   auto Name = G.getName();
@@ -603,7 +641,54 @@ bool isUserGlobal(const GlobalVariable &G) {
 }
 
 Twine getShadowGlobalName(const GlobalVariable &G) {
-  return ShadowGlobalPrefix + G.getName();
+  return (isSharedGlobal(G) ? ShadowSharedPrefix : ShadowGlobalPrefix) +
+         G.getName();
+}
+
+bool GPUSanImpl::hasUserGlobals() {
+  for (auto &[UserGlobal, _S] : UserGlobals) {
+    if (!isSharedGlobal(*UserGlobal))
+      return true;
+  }
+  return false;
+}
+
+bool GPUSanImpl::hasUserShared() {
+  for (auto &[UserGlobal, _S] : UserGlobals) {
+    if (isSharedGlobal(*UserGlobal))
+      return true;
+  }
+  return false;
+}
+
+void GPUSanImpl::registerGlobal(IRBuilder<> &IRB, GlobalVariable *UserGlobal,
+                                GlobalVariable *Shadow) {
+  auto PO = isSharedGlobal(*UserGlobal) ? SHARED : GLOBAL;
+  auto *PtrTy = getPtrTy(PO);
+  auto NewFn = getNewFn(PO);
+
+  auto *OriginalType = UserGlobal->getValueType();
+  auto OrginalTypeSize = DL.getTypeAllocSize(OriginalType);
+
+  Value *PlainUserGlobal =
+      IRB.CreatePointerBitCastOrAddrSpaceCast(UserGlobal, PtrTy);
+
+  auto *RegisterGlobalCall =
+      createCall(IRB, NewFn,
+                 {PlainUserGlobal, ConstantInt::get(Int64Ty, OrginalTypeSize),
+                  ConstantInt::get(Int64Ty, AllocationId++),
+                  getSourceIndex(UserGlobal), getPC(IRB)});
+  IRB.CreateStore(RegisterGlobalCall, Shadow);
+}
+
+void GPUSanImpl::unregisterGlobal(IRBuilder<> &IRB, GlobalVariable *UserGlobal,
+                                  GlobalVariable *Shadow) {
+  auto PO = isSharedGlobal(*UserGlobal) ? SHARED : GLOBAL;
+  auto *PtrTy = getPtrTy(PO);
+  auto FreeFn = getFreeFn(PO);
+
+  Value *LoadDummyPtr = IRB.CreateLoad(PtrTy, Shadow);
+  createCall(IRB, FreeFn, {LoadDummyPtr, getSourceIndex(UserGlobal)});
 }
 
 Function *GPUSanImpl::createApplyShadowGlobalFn(
@@ -619,7 +704,7 @@ Function *GPUSanImpl::createApplyShadowGlobalFn(
   BasicBlock *Entry = BasicBlock::Create(Ctx, "entry", RegisterFn);
   IRBuilder<> IRB(Entry);
 
-  if (UserGlobals.empty()) {
+  if (!hasUserGlobals()) {
     IRB.CreateRetVoid();
     return RegisterFn;
   }
@@ -629,6 +714,9 @@ Function *GPUSanImpl::createApplyShadowGlobalFn(
   SmallVector<Value *, 16> Conditions;
 
   for (auto &[UserGlobal, ShadowGlobal] : UserGlobals) {
+    if (isSharedGlobal(*UserGlobal))
+      continue;
+
     BasicBlock *CheckBlock;
     if (FirstGlobal) {
       CheckBlock = Entry;
@@ -679,34 +767,21 @@ Function *GPUSanImpl::createShadowGlobalRegisterFn() {
   auto PredicateCodegen = [&](IRBuilder<> &IRB, Value *PredicateValue) {
     return IRB.CreateICmpEQ(PredicateValue, ConstantInt::get(Int64Ty, 0));
   };
-  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *Usr,
+  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *U,
                              GlobalVariable *Shadow) {
-    auto *OriginalType = Usr->getValueType();
-    auto OrginalTypeSize = DL.getTypeAllocSize(OriginalType);
-
-    Value *PlainUserGlobal =
-        IRB.CreatePointerBitCastOrAddrSpaceCast(Usr, getPtrTy(GLOBAL));
-
-    auto *RegisterGlobalCall =
-        createCall(IRB, getNewFn(GLOBAL),
-                   {PlainUserGlobal, ConstantInt::get(Int64Ty, OrginalTypeSize),
-                    ConstantInt::get(Int64Ty, AllocationId++),
-                    getSourceIndex(Usr), getPC(IRB)});
-    IRB.CreateStore(RegisterGlobalCall, Shadow);
+    registerGlobal(IRB, U, Shadow);
   };
   return createApplyShadowGlobalFn("register_globals", PredicateCodegen,
                                    ShadowFnCodegen);
 }
 
 Function *GPUSanImpl::createShadowGlobalUnregisterFn() {
-  auto FreeGlobalFn = getFreeFn(GLOBAL);
   auto PredicateCodegen = [&](IRBuilder<> &IRB, Value *PredicateValue) {
     return IRB.CreateICmpNE(PredicateValue, ConstantInt::get(Int64Ty, 0));
   };
-  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *Usr,
+  auto ShadowFnCodegen = [&](IRBuilder<> &IRB, GlobalVariable *U,
                              GlobalVariable *Shadow) {
-    Value *LoadDummyPtr = IRB.CreateLoad(getPtrTy(GLOBAL), Shadow);
-    createCall(IRB, FreeGlobalFn, {LoadDummyPtr, getSourceIndex(Usr)});
+    unregisterGlobal(IRB, U, Shadow);
   };
   return createApplyShadowGlobalFn("unregister_globals", PredicateCodegen,
                                    ShadowFnCodegen);
@@ -721,7 +796,7 @@ void GPUSanImpl::addCtor() {
   BasicBlock *Entry = BasicBlock::Create(Ctx, "entry", CtorFn);
   IRBuilder<> IRB(Entry);
 
-  // createCall(IRB, createShadowGlobalRegisterFn());
+  createCall(IRB, createShadowGlobalRegisterFn());
   IRB.CreateRetVoid();
 
   appendToGlobalCtors(M, CtorFn, 0, nullptr);
@@ -742,16 +817,50 @@ void GPUSanImpl::addDtor() {
   appendToGlobalDtors(M, DtorFn, 0, nullptr);
 }
 
+Function *GPUSanImpl::createSharedCtor() {
+  Function *InitSharedFn =
+      Function::Create(FunctionType::get(VoidTy, false),
+                       GlobalValue::PrivateLinkage, "__san.init_shared", &M);
+  InitSharedFn->addFnAttr(Attribute::DisableSanitizerInstrumentation);
+
+  auto *EntryBB = BasicBlock::Create(Ctx, "entry", InitSharedFn);
+  IRBuilder<> IRB(EntryBB);
+
+  if (!AmbiguousCalls.empty()) {
+    Value *Idx = createCall(IRB, getThreadIdFn(), {}, "san.gtid");
+    Value *Ptr = IRB.CreateGEP(Int64Ty, LocationsArray, {Idx});
+    IRB.CreateStore(ConstantInt::get(Int64Ty, 0), Ptr);
+  }
+
+  for (auto &[UserGlobal, ShadowGlobal] : UserGlobals) {
+    if (isSharedGlobal(*UserGlobal))
+      registerGlobal(IRB, const_cast<GlobalVariable *>(UserGlobal),
+                     ShadowGlobal);
+  }
+
+  IRB.CreateRetVoid();
+  return InitSharedFn;
+}
+
 bool GPUSanImpl::instrumentGlobals() {
   bool Changed = false;
   for (GlobalVariable &V : M.globals()) {
     if (!isUserGlobal(V))
       continue;
+
     Twine ShadowName = getShadowGlobalName(V);
-    Constant *ShadowInit = Constant::getNullValue(Int64Ty);
-    auto *ShadowVar =
-        new GlobalVariable(M, Int64Ty, false, GlobalValue::ExternalLinkage,
-                           ShadowInit, ShadowName);
+    GlobalVariable *ShadowVar;
+    if (isSharedGlobal(V)) {
+      ShadowVar = new GlobalVariable(
+          M, SharedIntptrTy, false, GlobalValue::ExternalLinkage,
+          UndefValue::get(SharedIntptrTy), ShadowName, &V,
+          GlobalValue::ThreadLocalMode::NotThreadLocal, 3);
+    } else {
+      ShadowVar =
+          new GlobalVariable(M, IntptrTy, false, GlobalValue::ExternalLinkage,
+                             Constant::getNullValue(IntptrTy), ShadowName);
+    }
+
     ShadowVar->setVisibility(GlobalValue::ProtectedVisibility);
     UserGlobals.insert(std::make_pair(&V, ShadowVar));
     Changed = true;
@@ -835,48 +944,63 @@ void changePtrOperand(GetElementPtrInst *GEP, Value *NewPtrOp) {
     GEP->mutateType(ExpectedTy);
 }
 
-Value *GPUSanImpl::replaceUserGlobals(IRBuilder<> &IRB,
-                                      GlobalVariable *ShadowGlobal,
-                                      Value *PtrOp, Value *&GlobalRef,
-                                      Instruction *InsertBefore) {
-  Type *ShadowPtrType = getPtrTy(GLOBAL);
-  auto CreateGlobalRef = [&]() {
-    if (InsertBefore) {
-      GlobalRef =
-          new LoadInst(ShadowPtrType, ShadowGlobal,
-                       "load_sg_" + ShadowGlobal->getName(), InsertBefore);
-    } else {
-      GlobalRef = IRB.CreateLoad(ShadowPtrType, ShadowGlobal);
-    }
-    return GlobalRef;
-  };
-
-  if (auto *Inst = dyn_cast<GetElementPtrInst>(PtrOp)) {
+Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
+                                      Instruction *Inst, Value **GlobalRef) {
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
     auto *NewOperand = replaceUserGlobals(
-        IRB, ShadowGlobal, Inst->getPointerOperand(), GlobalRef, Inst);
-    changePtrOperand(Inst, NewOperand);
-
-    return Inst;
+        ShadowGlobal, GEP->getPointerOperand(), GEP, GlobalRef);
+    changePtrOperand(GEP, NewOperand);
+    return GEP;
   }
 
-  auto *C = dyn_cast<ConstantExpr>(PtrOp);
-  if (C && isa<GEPOperator>(PtrOp)) {
-    if (auto *Inst = dyn_cast<GetElementPtrInst>(C->getAsInstruction())) {
-      changePtrOperand(Inst, CreateGlobalRef());
-
-      auto IP = IRB.saveIP();
-      if (InsertBefore)
-        IRB.SetInsertPoint(InsertBefore);
-      auto I = IRB.Insert(Inst);
-      IRB.restoreIP(IP);
-
-      return I;
-    } else {
-      llvm_unreachable("Expected GEP instruction");
+  if (auto *AC = dyn_cast<AddrSpaceCastInst>(Inst)) {
+    auto *NewOperand = replaceUserGlobals(ShadowGlobal, AC->getPointerOperand(),
+                                          AC, GlobalRef);
+    AC->setOperand(AddrSpaceCastInst::getPointerOperandIndex(), NewOperand);
+    if (AC->getSrcAddressSpace() == AC->getDestAddressSpace()) {
+      AC->eraseFromParent();
+      return NewOperand;
     }
+    return AC;
   }
 
-  return CreateGlobalRef();
+  llvm_unreachable("Unexpected instruction type");
+}
+
+Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
+                                      ConstantExpr *C,
+                                      Instruction *InsertBefore,
+                                      Value **GlobalRef) {
+  IRBuilder<> IRB(InsertBefore);
+  auto *Inst = C->getAsInstruction();
+  IRB.Insert(Inst);
+
+  return replaceUserGlobals(ShadowGlobal, Inst, GlobalRef);
+}
+
+Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
+                                      Value *PtrOp, Instruction *InsertBefore,
+                                      Value **GlobalRef) {
+  if (auto *Inst = dyn_cast<Instruction>(PtrOp)) {
+    return replaceUserGlobals(ShadowGlobal, Inst, GlobalRef);
+  }
+
+  if (auto *C = dyn_cast<ConstantExpr>(PtrOp)) {
+    return replaceUserGlobals(ShadowGlobal, C, InsertBefore, GlobalRef);
+  }
+
+  if (auto *G = dyn_cast<GlobalVariable>(PtrOp)) {
+    Type *ShadowPtrType =
+        getPtrTy(isSharedGlobal(*ShadowGlobal) ? SHARED : GLOBAL);
+    Value *Ref =
+        new LoadInst(ShadowPtrType, ShadowGlobal,
+                     "load_sg_" + ShadowGlobal->getName(), InsertBefore);
+    if (GlobalRef)
+      *GlobalRef = Ref;
+    return Ref;
+  }
+
+  llvm_unreachable("Unexpected value");
 }
 
 void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
@@ -897,11 +1021,9 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
     // Replace any references to user-defined global variables
     // with their respective shadow globals
-    auto *GlobalCast = dyn_cast<GlobalVariable>(ObjectRef);
-    if (GlobalCast && UserGlobals.contains(GlobalCast)) {
-      auto *ShadowGlobal = UserGlobals.lookup(GlobalCast);
+    if (auto *ShadowGlobal = lookupUserGlobal(ObjectRef)) {
       Value *LoadDummyPtr;
-      PtrOp = replaceUserGlobals(IRB, ShadowGlobal, PtrOp, LoadDummyPtr);
+      PtrOp = replaceUserGlobals(ShadowGlobal, PtrOp, &I, &LoadDummyPtr);
       ObjectRef = LoadDummyPtr;
     }
 
@@ -949,6 +1071,16 @@ void GPUSanImpl::instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI) {
 void GPUSanImpl::instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI) {
   instrumentAccess(LI, StoreI, StoreInst::getPointerOperandIndex(),
                    *StoreI.getValueOperand()->getType(), /*IsRead=*/false);
+
+  auto *ValOp = StoreI.getValueOperand();
+  if (!ValOp->getType()->isPointerTy())
+    return;
+
+  auto *UnderlyingValue = getUnderlyingObject(ValOp);
+  if (auto *ShadowGlobal = lookupUserGlobal(UnderlyingValue)) {
+    Value *ReplacementOp = replaceUserGlobals(ShadowGlobal, ValOp, &StoreI);
+    StoreI.setOperand(0, ReplacementOp);
+  }
 }
 
 void GPUSanImpl::instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP) {
@@ -972,6 +1104,13 @@ void GPUSanImpl::instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP) {
   CB->setArgOperand(1, Offset);
 }
 
+bool isExternalFn(const Function &Fn) {
+  auto Name = Fn.getName();
+  return !Name.starts_with("ompx") &&
+         (Fn.isDeclaration() || Name.starts_with("__kmpc") ||
+          Name.starts_with("rpc_"));
+}
+
 bool GPUSanImpl::instrumentCallInst(LoopInfo &LI, CallInst &CI) {
   bool Changed = false;
   if (isa<LifetimeIntrinsic>(CI))
@@ -979,25 +1118,36 @@ bool GPUSanImpl::instrumentCallInst(LoopInfo &LI, CallInst &CI) {
   if (auto *Fn = CI.getCalledFunction()) {
     if (Fn->getName().starts_with("__kmpc_target_init"))
       return Changed;
-    if ((Fn->isDeclaration() || Fn->getName().starts_with("__kmpc") ||
-         Fn->getName().starts_with("rpc_")) &&
-        !Fn->getName().starts_with("ompx")) {
-      IRBuilder<> IRB(&CI);
-      for (int I = 0, E = CI.arg_size(); I != E; ++I) {
-        Value *Op = CI.getArgOperand(I);
-        if (!Op->getType()->isPointerTy())
-          continue;
-        PtrOrigin PO = getPtrOrigin(LI, Op);
-        if (PO > GLOBAL)
-          continue;
-        Value *PlainOp =
-            IRB.CreatePointerBitCastOrAddrSpaceCast(Op, getPtrTy(PO));
-        auto *CB = createCall(IRB, getUnpackFn(PO), {PlainOp, getPC(IRB)},
-                              Op->getName() + ".unpack");
-        CI.setArgOperand(
-            I, IRB.CreatePointerBitCastOrAddrSpaceCast(CB, Op->getType()));
+
+    auto UnpackPtr = isExternalFn(*Fn);
+    IRBuilder<> IRB(&CI);
+    for (int I = 0, E = CI.arg_size(); I != E; ++I) {
+      Value *Op = CI.getArgOperand(I);
+      if (!Op->getType()->isPointerTy())
+        continue;
+
+      const Value *Object = nullptr;
+      PtrOrigin PO = getPtrOrigin(LI, Op, &Object);
+      if (PO > GLOBAL)
+        continue;
+
+      Value *NewOp = Op;
+      if (auto *ShadowGlobal = lookupUserGlobal(Object)) {
+        NewOp = replaceUserGlobals(ShadowGlobal, Op, &CI);
         Changed = true;
       }
+
+      if (UnpackPtr) {
+        Value *PlainOp =
+            IRB.CreatePointerBitCastOrAddrSpaceCast(NewOp, getPtrTy(PO));
+        NewOp = createCall(IRB, getUnpackFn(PO), {PlainOp, getPC(IRB)},
+                           Op->getName() + ".unpack");
+        Changed = true;
+      }
+
+      if (NewOp != Op)
+        CI.setArgOperand(
+            I, IRB.CreatePointerBitCastOrAddrSpaceCast(NewOp, Op->getType()));
     }
   }
   return Changed;
@@ -1160,23 +1310,14 @@ bool GPUSanImpl::instrument() {
     IRB.CreateRet(LocationValue);
   }
 
-  Function *InitSharedFn =
-      Function::Create(FunctionType::get(VoidTy, false),
-                       GlobalValue::PrivateLinkage, "__san.init_shared", &M);
-  auto *EntryBB = BasicBlock::Create(Ctx, "entry", InitSharedFn);
-  IRBuilder<> IRB(EntryBB);
-  if (!AmbiguousCalls.empty()) {
-    Value *Idx = createCall(IRB, getThreadIdFn(), {}, "san.gtid");
-    Value *Ptr = IRB.CreateGEP(Int64Ty, LocationsArray, {Idx});
-    IRB.CreateStore(ConstantInt::get(Int64Ty, 0), Ptr);
-
+  Function *InitSharedFn = createSharedCtor();
+  if (!AmbiguousCalls.empty() || hasUserShared()) {
     for (auto *KernelFn : Kernels) {
       IRBuilder<> IRB(
           &*KernelFn->getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
       createCall(IRB, InitSharedFn, {});
     }
   }
-  IRB.CreateRetVoid();
 
   for (const auto &It : llvm::enumerate(AmbiguousCallsOrdered)) {
     IRBuilder<> IRB(It.value());
