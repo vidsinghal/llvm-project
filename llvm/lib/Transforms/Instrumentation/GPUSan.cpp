@@ -585,6 +585,10 @@ bool isSharedGlobal(const GlobalVariable &G) {
   return G.getAddressSpace() == SHARED_ADDRSPACE;
 }
 
+constexpr StringRef ShadowGlobalPrefix = "__san.global.";
+constexpr StringRef ShadowSharedPrefix = "__san.shared.";
+constexpr StringRef GlobalIgnorePrefix[] = {"llvm.", "__sanitizer_", "__san."};
+
 PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
                                    const Value **Object) {
   SmallVector<const Value *> Objects;
@@ -598,6 +602,14 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
       ObjPO = LOCAL;
     } else if (auto *Global = dyn_cast<GlobalVariable>(Obj)) {
       ObjPO = isSharedGlobal(*Global) ? SHARED : GLOBAL;
+    } else if (auto *Load = dyn_cast<LoadInst>(Obj)) {
+      if (auto *Global = dyn_cast<GlobalVariable>(Load->getPointerOperand())) {
+        if (Global->getName().starts_with(ShadowGlobalPrefix)) {
+          ObjPO = GLOBAL;
+        } else if (Global->getName().starts_with(ShadowSharedPrefix)) {
+          ObjPO = SHARED;
+        }
+      }
     } else if (auto *II = dyn_cast<IntrinsicInst>(Obj)) {
       if (II->getIntrinsicID() == Intrinsic::amdgcn_implicitarg_ptr ||
           II->getIntrinsicID() == Intrinsic::amdgcn_dispatch_ptr)
@@ -624,10 +636,6 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
   }
   return PO;
 }
-
-constexpr StringRef ShadowGlobalPrefix = "__san.global.";
-constexpr StringRef ShadowSharedPrefix = "__san.shared.";
-constexpr StringRef GlobalIgnorePrefix[] = {"llvm.", "__sanitizer_", "__san."};
 
 bool isUserGlobal(const GlobalVariable &G) {
   auto Name = G.getName();
