@@ -174,6 +174,7 @@ private:
                         Type &AccessTy, bool IsRead);
   void instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI);
   void instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI);
+  void instrumentRMW(LoopInfo &LI, AtomicRMWInst &AtomicI);
   void instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP);
   bool instrumentCallInst(LoopInfo &LI, CallInst &CI);
   void
@@ -182,13 +183,10 @@ private:
 
   // Function used by access instrumentation to replace all references to
   // user global variables with shadow variable references
-  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, ConstantExpr *C,
-                            Instruction *InsertBefore,
+  Value *replaceUserGlobals(ConstantExpr *C, Instruction *InsertBefore,
                             Value **GlobalRef = nullptr);
-  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, Instruction *Inst,
-                            Value **GlobalRef = nullptr);
-  Value *replaceUserGlobals(GlobalVariable *ShadowGlobal, Value *PtrOp,
-                            Instruction *InsertBefore,
+  Value *replaceUserGlobals(Instruction *Inst, Value **GlobalRef = nullptr);
+  Value *replaceUserGlobals(Value *PtrOp, Instruction *InsertBefore,
                             Value **GlobalRef = nullptr);
 
   void addCtor();
@@ -214,14 +212,12 @@ private:
   // Shared memory ctor/dtor
   Function *createSharedCtor();
 
-  GlobalVariable *lookupUserGlobal(const Value *V) {
+  bool isUserGlobal(const Value *V) {
     if (!V)
-      return nullptr;
-    auto *GlobalCast = dyn_cast<GlobalVariable>(V);
-    if (GlobalCast && UserGlobals.contains(GlobalCast)) {
-      return UserGlobals.lookup(GlobalCast);
-    }
-    return nullptr;
+      return false;
+    if (const auto *Global = dyn_cast<GlobalVariable>(V))
+      return UserGlobals.contains(Global);
+    return false;
   }
 
   bool hasUserGlobals();
@@ -627,6 +623,9 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
     } else if (auto *Arg = dyn_cast<Argument>(Obj)) {
       if (Arg->getParent()->hasFnAttribute("kernel"))
         ObjPO = GLOBAL;
+    } else if (isa<IntToPtrInst>(Obj)) {
+      // Ptrs from ints are considered system ptrs to prevent
+      ObjPO = SYSTEM;
     }
     if (PO == NONE || PO == ObjPO) {
       PO = ObjPO;
@@ -637,12 +636,12 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
   return PO;
 }
 
-bool isUserGlobal(const GlobalVariable &G) {
+bool canInstrumentGlobal(const GlobalVariable &G) {
   auto Name = G.getName();
   if (Name.empty())
     return false;
-  for (const auto &s : GlobalIgnorePrefix) {
-    if (Name.starts_with(s))
+  for (const auto &S : GlobalIgnorePrefix) {
+    if (Name.starts_with(S))
       return false;
   }
   return true;
@@ -853,7 +852,7 @@ Function *GPUSanImpl::createSharedCtor() {
 bool GPUSanImpl::instrumentGlobals() {
   bool Changed = false;
   for (GlobalVariable &V : M.globals()) {
-    if (!isUserGlobal(V))
+    if (!canInstrumentGlobal(V))
       continue;
 
     Twine ShadowName = getShadowGlobalName(V);
@@ -952,18 +951,17 @@ void changePtrOperand(GetElementPtrInst *GEP, Value *NewPtrOp) {
     GEP->mutateType(ExpectedTy);
 }
 
-Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
-                                      Instruction *Inst, Value **GlobalRef) {
+Value *GPUSanImpl::replaceUserGlobals(Instruction *Inst, Value **GlobalRef) {
   if (auto *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
-    auto *NewOperand = replaceUserGlobals(
-        ShadowGlobal, GEP->getPointerOperand(), GEP, GlobalRef);
+    auto *NewOperand =
+        replaceUserGlobals(GEP->getPointerOperand(), GEP, GlobalRef);
     changePtrOperand(GEP, NewOperand);
     return GEP;
   }
 
   if (auto *AC = dyn_cast<AddrSpaceCastInst>(Inst)) {
-    auto *NewOperand = replaceUserGlobals(ShadowGlobal, AC->getPointerOperand(),
-                                          AC, GlobalRef);
+    auto *NewOperand =
+        replaceUserGlobals(AC->getPointerOperand(), AC, GlobalRef);
     AC->setOperand(AddrSpaceCastInst::getPointerOperandIndex(), NewOperand);
     if (AC->getSrcAddressSpace() == AC->getDestAddressSpace()) {
       AC->eraseFromParent();
@@ -975,37 +973,40 @@ Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
   llvm_unreachable("Unexpected instruction type");
 }
 
-Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
-                                      ConstantExpr *C,
+Value *GPUSanImpl::replaceUserGlobals(ConstantExpr *C,
                                       Instruction *InsertBefore,
                                       Value **GlobalRef) {
   IRBuilder<> IRB(InsertBefore);
   auto *Inst = C->getAsInstruction();
   IRB.Insert(Inst);
 
-  return replaceUserGlobals(ShadowGlobal, Inst, GlobalRef);
+  return replaceUserGlobals(Inst, GlobalRef);
 }
 
-Value *GPUSanImpl::replaceUserGlobals(GlobalVariable *ShadowGlobal,
-                                      Value *PtrOp, Instruction *InsertBefore,
+Value *GPUSanImpl::replaceUserGlobals(Value *PtrOp, Instruction *InsertBefore,
                                       Value **GlobalRef) {
   if (auto *Inst = dyn_cast<Instruction>(PtrOp)) {
-    return replaceUserGlobals(ShadowGlobal, Inst, GlobalRef);
+    return replaceUserGlobals(Inst, GlobalRef);
   }
 
   if (auto *C = dyn_cast<ConstantExpr>(PtrOp)) {
-    return replaceUserGlobals(ShadowGlobal, C, InsertBefore, GlobalRef);
+    return replaceUserGlobals(C, InsertBefore, GlobalRef);
   }
 
   if (auto *G = dyn_cast<GlobalVariable>(PtrOp)) {
-    Type *ShadowPtrType =
-        getPtrTy(isSharedGlobal(*ShadowGlobal) ? SHARED : GLOBAL);
-    Value *Ref =
-        new LoadInst(ShadowPtrType, ShadowGlobal,
-                     "load_sg_" + ShadowGlobal->getName(), InsertBefore);
-    if (GlobalRef)
-      *GlobalRef = Ref;
-    return Ref;
+    if (UserGlobals.contains(G)) {
+      GlobalVariable *ShadowGlobal = UserGlobals.lookup(G);
+      Type *ShadowPtrType =
+          getPtrTy(isSharedGlobal(*ShadowGlobal) ? SHARED : GLOBAL);
+      Value *Ref =
+          new LoadInst(ShadowPtrType, ShadowGlobal,
+                       "load_sg_" + ShadowGlobal->getName(), InsertBefore);
+
+      if (GlobalRef)
+        *GlobalRef = Ref;
+      return Ref;
+    }
+    return G;
   }
 
   llvm_unreachable("Unexpected value");
@@ -1029,9 +1030,9 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
 
     // Replace any references to user-defined global variables
     // with their respective shadow globals
-    if (auto *ShadowGlobal = lookupUserGlobal(ObjectRef)) {
+    if (isUserGlobal(ObjectRef)) {
       Value *LoadDummyPtr;
-      PtrOp = replaceUserGlobals(ShadowGlobal, PtrOp, &I, &LoadDummyPtr);
+      PtrOp = replaceUserGlobals(PtrOp, &I, &LoadDummyPtr);
       ObjectRef = LoadDummyPtr;
     }
 
@@ -1085,10 +1086,16 @@ void GPUSanImpl::instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI) {
     return;
 
   auto *UnderlyingValue = getUnderlyingObject(ValOp);
-  if (auto *ShadowGlobal = lookupUserGlobal(UnderlyingValue)) {
-    Value *ReplacementOp = replaceUserGlobals(ShadowGlobal, ValOp, &StoreI);
+  if (isUserGlobal(UnderlyingValue)) {
+    Value *ReplacementOp = replaceUserGlobals(ValOp, &StoreI);
     StoreI.setOperand(0, ReplacementOp);
   }
+}
+
+void GPUSanImpl::instrumentRMW(LoopInfo &LI, AtomicRMWInst &AtomicI) {
+  instrumentAccess(LI, AtomicI, AtomicRMWInst::getPointerOperandIndex(),
+                   *AtomicI.getType(),
+                   /*IsRead=*/true);
 }
 
 void GPUSanImpl::instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP) {
@@ -1140,8 +1147,8 @@ bool GPUSanImpl::instrumentCallInst(LoopInfo &LI, CallInst &CI) {
         continue;
 
       Value *NewOp = Op;
-      if (auto *ShadowGlobal = lookupUserGlobal(Object)) {
-        NewOp = replaceUserGlobals(ShadowGlobal, Op, &CI);
+      if (isUserGlobal(Object)) {
+        NewOp = replaceUserGlobals(Op, &CI);
         Changed = true;
       }
 
@@ -1173,6 +1180,7 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
   SmallVector<StoreInst *> Stores;
   SmallVector<CallInst *> Calls;
   SmallVector<GetElementPtrInst *> GEPs;
+  SmallVector<AtomicRMWInst *> AtomicRMWs;
 
   for (auto &I : instructions(Fn)) {
     switch (I.getOpcode()) {
@@ -1204,6 +1212,9 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
     case Instruction::Ret:
       Returns.push_back(&cast<ReturnInst>(I));
       break;
+    case Instruction::AtomicRMW:
+      AtomicRMWs.push_back(&cast<AtomicRMWInst>(I));
+      break;
     default:
       break;
     }
@@ -1213,6 +1224,8 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
     instrumentLoadInst(LI, *Load);
   for (auto *Store : Stores)
     instrumentStoreInst(LI, *Store);
+  for (auto *RMW : AtomicRMWs)
+    instrumentRMW(LI, *RMW);
   for (auto *GEP : GEPs)
     instrumentGEPInst(LI, *GEP);
   for (auto *Call : Calls)
