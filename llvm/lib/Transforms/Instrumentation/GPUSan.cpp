@@ -623,9 +623,6 @@ PtrOrigin GPUSanImpl::getPtrOrigin(LoopInfo &LI, Value *Ptr,
     } else if (auto *Arg = dyn_cast<Argument>(Obj)) {
       if (Arg->getParent()->hasFnAttribute("kernel"))
         ObjPO = GLOBAL;
-    } else if (isa<IntToPtrInst>(Obj)) {
-      // Ptrs from ints are considered system ptrs to prevent
-      ObjPO = SYSTEM;
     }
     if (PO == NONE || PO == ObjPO) {
       PO = ObjPO;
