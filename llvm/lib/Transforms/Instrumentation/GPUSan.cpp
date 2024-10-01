@@ -1097,12 +1097,16 @@ void GPUSanImpl::instrumentRMW(LoopInfo &LI, AtomicRMWInst &AtomicI) {
 
 void GPUSanImpl::instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP) {
   Value *PtrOp = GEP.getPointerOperand();
-  PtrOrigin PO = getPtrOrigin(LI, PtrOp);
+  const Value *Object = nullptr;
+  PtrOrigin PO = getPtrOrigin(LI, PtrOp, &Object);
   if (PO > GLOBAL)
     return;
 
   GEP.setOperand(GetElementPtrInst::getPointerOperandIndex(),
                  Constant::getNullValue(PtrOp->getType()));
+  if (isUserGlobal(Object))
+    PtrOp = replaceUserGlobals(PtrOp, &GEP);
+
   IRBuilder<> IRB(GEP.getNextNode());
   Value *PlainPtrOp =
       IRB.CreatePointerBitCastOrAddrSpaceCast(PtrOp, getPtrTy(PO));
