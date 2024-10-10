@@ -178,8 +178,11 @@ private:
   void instrumentGEPInst(LoopInfo &LI, GetElementPtrInst &GEP);
   bool instrumentCallInst(LoopInfo &LI, CallInst &CI);
   void
-  instrumentReturns(SmallVectorImpl<std::pair<AllocaInst *, Value *>> &Allocas,
+  instrumentReturns(LoopInfo &LI,
+                    SmallVectorImpl<std::pair<AllocaInst *, Value *>> &Allocas,
                     SmallVectorImpl<ReturnInst *> &Returns);
+
+  void replaceOperandGlobals(LoopInfo &LI, Instruction *Inst, uint32_t operand);
 
   // Function used by access instrumentation to replace all references to
   // user global variables with shadow variable references
@@ -188,6 +191,7 @@ private:
   Value *replaceUserGlobals(Instruction *Inst, Value **GlobalRef = nullptr);
   Value *replaceUserGlobals(Value *PtrOp, Instruction *InsertBefore,
                             Value **GlobalRef = nullptr);
+  Value *replaceUserGlobals(PHINode *PHI, Value **GlobalRef = nullptr);
 
   void addCtor();
   void addDtor();
@@ -948,6 +952,22 @@ void changePtrOperand(GetElementPtrInst *GEP, Value *NewPtrOp) {
     GEP->mutateType(ExpectedTy);
 }
 
+Value *GPUSanImpl::replaceUserGlobals(PHINode *PHI, Value **GlobalRef) {
+  IRBuilder<> IRB(PHI);
+  for (uint32_t i = 0; i < PHI->getNumIncomingValues(); i++) {
+    Value *IncomingVal = PHI->getIncomingValue(i);
+    Instruction *Terminator = PHI->getIncomingBlock(i)->getTerminator();
+    if (auto *C = dyn_cast<ConstantExpr>(IncomingVal)) {
+      Value *ReplaceVal = replaceUserGlobals(C, Terminator, GlobalRef);
+      PHI->setIncomingValue(i, IRB.CreatePointerBitCastOrAddrSpaceCast(
+                                   ReplaceVal, PHI->getType()));
+    }
+  }
+  // Can't determine single base address for PHI
+  *GlobalRef = nullptr;
+  return PHI;
+}
+
 Value *GPUSanImpl::replaceUserGlobals(Instruction *Inst, Value **GlobalRef) {
   if (auto *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
     auto *NewOperand =
@@ -967,7 +987,11 @@ Value *GPUSanImpl::replaceUserGlobals(Instruction *Inst, Value **GlobalRef) {
     return AC;
   }
 
-  llvm_unreachable("Unexpected instruction type");
+  if (auto *PHI = dyn_cast<PHINode>(Inst)) {
+    return replaceUserGlobals(PHI, GlobalRef);
+  }
+
+  return Inst;
 }
 
 Value *GPUSanImpl::replaceUserGlobals(ConstantExpr *C,
@@ -1009,6 +1033,27 @@ Value *GPUSanImpl::replaceUserGlobals(Value *PtrOp, Instruction *InsertBefore,
   llvm_unreachable("Unexpected value");
 }
 
+void GPUSanImpl::replaceOperandGlobals(LoopInfo &LI, Instruction *Inst,
+                                       uint32_t operand) {
+  auto *Op = Inst->getOperand(operand);
+  auto *OpTy = Op->getType();
+
+  if (!OpTy->isPointerTy())
+    return;
+
+  const Value *Object = nullptr;
+  PtrOrigin PO = getPtrOrigin(LI, Op, &Object);
+  if (PO > GLOBAL)
+    return;
+
+  IRBuilder<> IRB(Inst);
+  if (isUserGlobal(Object)) {
+    Value *ReplacementOp = replaceUserGlobals(Op, Inst);
+    Inst->setOperand(
+        operand, IRB.CreatePointerBitCastOrAddrSpaceCast(ReplacementOp, OpTy));
+  }
+}
+
 void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
                                   Type &AccessTy, bool IsRead) {
   Value *PtrOp = I.getOperand(PtrIdx);
@@ -1028,12 +1073,17 @@ void GPUSanImpl::instrumentAccess(LoopInfo &LI, Instruction &I, int PtrIdx,
     // Replace any references to user-defined global variables
     // with their respective shadow globals
     if (isUserGlobal(ObjectRef)) {
-      Value *LoadDummyPtr;
+      Value *LoadDummyPtr = nullptr;
       PtrOp = replaceUserGlobals(PtrOp, &I, &LoadDummyPtr);
       ObjectRef = LoadDummyPtr;
     }
 
-    getAllocationInfo(*I.getFunction(), PO, *ObjectRef, Start, Length, Tag);
+    // Base address can be null if instruction is PHI
+    if (ObjectRef) {
+      getAllocationInfo(*I.getFunction(), PO, *ObjectRef, Start, Length, Tag);
+    } else {
+      PO = UNKNOWN;
+    }
   }
 
   if (Loop *L = LI.getLoopFor(I.getParent())) {
@@ -1077,16 +1127,7 @@ void GPUSanImpl::instrumentLoadInst(LoopInfo &LI, LoadInst &LoadI) {
 void GPUSanImpl::instrumentStoreInst(LoopInfo &LI, StoreInst &StoreI) {
   instrumentAccess(LI, StoreI, StoreInst::getPointerOperandIndex(),
                    *StoreI.getValueOperand()->getType(), /*IsRead=*/false);
-
-  auto *ValOp = StoreI.getValueOperand();
-  if (!ValOp->getType()->isPointerTy())
-    return;
-
-  auto *UnderlyingValue = getUnderlyingObject(ValOp);
-  if (isUserGlobal(UnderlyingValue)) {
-    Value *ReplacementOp = replaceUserGlobals(ValOp, &StoreI);
-    StoreI.setOperand(0, ReplacementOp);
-  }
+  replaceOperandGlobals(LI, &StoreI, 0);
 }
 
 void GPUSanImpl::instrumentRMW(LoopInfo &LI, AtomicRMWInst &AtomicI) {
@@ -1234,18 +1275,21 @@ bool GPUSanImpl::instrumentFunction(Function &Fn) {
   for (auto &It : Allocas)
     It.second = instrumentAllocaInst(LI, *It.first);
 
-  instrumentReturns(Allocas, Returns);
+  instrumentReturns(LI, Allocas, Returns);
 
   return Changed;
 }
 
 void GPUSanImpl::instrumentReturns(
-    SmallVectorImpl<std::pair<AllocaInst *, Value *>> &Allocas,
+    LoopInfo &LI, SmallVectorImpl<std::pair<AllocaInst *, Value *>> &Allocas,
     SmallVectorImpl<ReturnInst *> &Returns) {
   if (Allocas.empty())
     return;
   for (auto *RI : Returns) {
     IRBuilder<> IRB(RI);
+    if (RI->getReturnValue()) {
+      replaceOperandGlobals(LI, RI, 0);
+    }
     createCall(IRB, getFreeNLocalFn(),
                {ConstantInt::get(Int32Ty, Allocas.size())});
   }

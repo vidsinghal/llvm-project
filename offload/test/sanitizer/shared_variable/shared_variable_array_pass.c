@@ -1,5 +1,6 @@
-// RUN: %libomptarget-compileopt-generic -g -fsanitize=offload
-// -fopenmp-offload-mandatory RUN: %libomptarget-run-generic
+// RUN: %libomptarget-compileopt-generic -g -fsanitize=offload \
+// RUN:   -fopenmp-offload-mandatory
+// RUN: %libomptarget-run-generic
 
 // REQUIRES: gpu
 
