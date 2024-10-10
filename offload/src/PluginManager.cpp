@@ -445,16 +445,26 @@ static int loadImagesOntoDevice(DeviceTy &Device) {
                               true /*IsRefCountINF*/))
                           .first->HDTT;
 
+        // Attempt to load any fake global ptrs from device
+        auto &DeviceInterface = Device.RTL->getDevice(DeviceId);
+        if (DeviceInterface.readFakePtrFromDevice(CurrHostEntry->name,
+                                                  Entry->FakeTgtPtrBegin))
+          return OFFLOAD_FAIL;
+        bool transferShadow = !Entry->FakeTgtPtrBegin;
+
         // Notify about the new mapping.
         if (Device.notifyDataMapped(CurrHostEntry->addr, CurrDeviceEntryAddr,
                                     CurrHostEntry->size,
                                     Entry->FakeTgtPtrBegin))
           return OFFLOAD_FAIL;
 
-        auto &DeviceInterface = Device.RTL->getDevice(DeviceId);
-        if (DeviceInterface.transferFakePtrToDevice(CurrHostEntry->name,
-                                                    Entry->FakeTgtPtrBegin))
-          return OFFLOAD_FAIL;
+        // Transfer host pointer to device if ptr wasn't read from device
+        // already
+        if (transferShadow) {
+          if (DeviceInterface.transferFakePtrToDevice(CurrHostEntry->name,
+                                                      Entry->FakeTgtPtrBegin))
+            return OFFLOAD_FAIL;
+        }
       }
     }
     Device.setHasPendingImages(false);

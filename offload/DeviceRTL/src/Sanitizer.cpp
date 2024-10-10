@@ -33,6 +33,11 @@ struct AllocationInfoGlobalTy {
   uint64_t Length;
   uint32_t Tag;
 };
+struct AllocationInfoSharedTy {
+  _AS_PTR(void, AllocationKind::SHARED) Start;
+  uint64_t Length;
+  uint32_t Tag;
+};
 
 template <AllocationKind AK> struct AllocationInfoTy {};
 template <> struct AllocationInfoTy<AllocationKind::GLOBAL> {
@@ -40,6 +45,9 @@ template <> struct AllocationInfoTy<AllocationKind::GLOBAL> {
 };
 template <> struct AllocationInfoTy<AllocationKind::LOCAL> {
   using ASVoidPtrTy = AllocationInfoLocalTy;
+};
+template <> struct AllocationInfoTy<AllocationKind::SHARED> {
+  using ASVoidPtrTy = AllocationInfoSharedTy;
 };
 
 template <>
@@ -88,7 +96,7 @@ template <AllocationKind AK> struct AllocationTracker {
     // Reserve the 0 element for the null pointer in global space.
     auto &AllocArr = getAllocationArray<AK>();
     auto &Cnt = AllocArr.Cnt;
-    if constexpr (AK == AllocationKind::LOCAL)
+    if constexpr (AK == AllocationKind::LOCAL || AK == AllocationKind::SHARED)
       Slot = ++Cnt;
     if (Slot == -1)
       Slot = ++Cnt;
@@ -155,10 +163,14 @@ template <AllocationKind AK> struct AllocationTracker {
     if constexpr (AK == AllocationKind::LOCAL)
       if (Length == 0)
         Length = getAllocation<AK>(AP, AccessId, PC).Length;
-    if constexpr (AK == AllocationKind::GLOBAL)
-      if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+    if constexpr (AK == AllocationKind::GLOBAL ||
+                  AK == AllocationKind::SHARED) {
+      if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC) {
         __sanitizer_trap_info_ptr->garbagePointer<AK>(AP, (void *)P, SourceId,
                                                       PC);
+      }
+    }
+
     int64_t Offset = AP.Offset;
     if (OMP_UNLIKELY(
             Offset > Length - Size ||
@@ -212,29 +224,40 @@ template <AllocationKind AK> struct AllocationTracker {
         __sanitizer_trap_info_ptr->memoryLeak<AK>(A, Slot);
     }
   }
+
+  [[clang::disable_sanitizer_instrumentation]] static bool
+  checkPtr(void *P, int64_t SourceId, uint64_t PC) {
+    auto AP = AllocationPtrTy<AK>::get(P);
+    if ((AllocationKind)AP.Kind != AK)
+      return false;
+    if (AP.Magic != SanitizerConfig<AK>::MAGIC)
+      __sanitizer_trap_info_ptr->garbagePointer<AK>(AP, P, SourceId, PC);
+    return true;
+  }
 };
 
 template <AllocationKind AK>
 AllocationArrayTy<AK>
     Allocations<AK>::Arr[SanitizerConfig<AK>::NUM_ALLOCATION_ARRAYS];
 
-static void checkForMagic(bool IsGlobal, void *P, int64_t SourceId,
-                          uint64_t PC) {
-  if (IsGlobal) {
-    auto AP = AllocationPtrTy<AllocationKind::GLOBAL>::get(P);
-    if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
-      __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::GLOBAL>(
-          AP, P, SourceId, PC);
-  } else {
-    auto AP = AllocationPtrTy<AllocationKind::LOCAL>::get(P);
-    if (AP.Magic != SanitizerConfig<AllocationKind::LOCAL>::MAGIC)
-      __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::LOCAL>(
-          AP, P, SourceId, PC);
-  }
+[[clang::disable_sanitizer_instrumentation,
+  gnu::always_inline]] static AllocationKind
+getFakePtrType(void *P, int64_t SourceId, uint64_t PC) {
+  if (AllocationTracker<AllocationKind::SHARED>::checkPtr(P, SourceId, PC))
+    return AllocationKind::SHARED;
+  if (AllocationTracker<AllocationKind::GLOBAL>::checkPtr(P, SourceId, PC))
+    return AllocationKind::GLOBAL;
+  if (AllocationTracker<AllocationKind::LOCAL>::checkPtr(P, SourceId, PC))
+    return AllocationKind::LOCAL;
+
+  // Couldn't determine type
+  __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::LOCAL>(
+      AllocationPtrTy<AllocationKind::LOCAL>::get(P), P, SourceId, PC);
 }
 
 extern "C" {
 
+#define REAL_PTR_IS_SHARED(PTR) (isSharedMemPtr(PTR))
 #define REAL_PTR_IS_LOCAL(PTR) (isThreadLocalMemPtr(PTR))
 #define IS_GLOBAL(PTR) ((uintptr_t)PTR & (1UL << 63))
 
@@ -254,6 +277,14 @@ extern "C" {
       Start, Length, AllocationId, -1, SourceId, PC);
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::SHARED)
+    ompx_new_shared(_AS_PTR(void, AllocationKind::SHARED) Start,
+                    uint64_t Length, int64_t AllocationId, int64_t SourceId,
+                    uint64_t PC) {
+  return AllocationTracker<AllocationKind::SHARED>::create(
+      Start, Length, AllocationId, 0, SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] void
 __sanitizer_register_host(_AS_PTR(void, AllocationKind::GLOBAL) Start,
                           uint64_t Length, uint64_t Slot, int64_t SourceId) {
@@ -264,6 +295,9 @@ __sanitizer_register_host(_AS_PTR(void, AllocationKind::GLOBAL) Start,
   gnu::used, gnu::retain]] void *
 ompx_new(void *Start, uint64_t Length, int64_t AllocationId, int64_t SourceId,
          uint64_t PC) {
+  if (REAL_PTR_IS_SHARED(Start))
+    return (void *)ompx_new_shared((_AS_PTR(void, AllocationKind::SHARED))Start,
+                                   Length, AllocationId, SourceId, PC);
   if (REAL_PTR_IS_LOCAL(Start))
     return (void *)ompx_new_local((_AS_PTR(void, AllocationKind::LOCAL))Start,
                                   Length, AllocationId, SourceId, PC);
@@ -292,12 +326,21 @@ ompx_free_global(_AS_PTR(void, AllocationKind::GLOBAL) P, int64_t SourceId) {
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] void
+ompx_free_shared(_AS_PTR(void, AllocationKind::SHARED) P, int64_t SourceId) {
+  return AllocationTracker<AllocationKind::SHARED>::remove(P, SourceId);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
 ompx_free(void *P, int64_t SourceId, uint64_t PC) {
-  bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, PC);
-  if (IsGlobal)
+  auto PtrKind = getFakePtrType(P, SourceId, PC);
+  switch (PtrKind) {
+  case AllocationKind::GLOBAL:
     return ompx_free_global((_AS_PTR(void, AllocationKind::GLOBAL))P, SourceId);
-  return ompx_free_local((_AS_PTR(void, AllocationKind::LOCAL))P, SourceId);
+  case AllocationKind::LOCAL:
+    return ompx_free_local((_AS_PTR(void, AllocationKind::LOCAL))P, SourceId);
+  case AllocationKind::SHARED:
+    return ompx_free_shared((_AS_PTR(void, AllocationKind::SHARED))P, SourceId);
+  }
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
@@ -314,15 +357,27 @@ ompx_free(void *P, int64_t SourceId, uint64_t PC) {
                                                             SourceId);
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::SHARED)
+    ompx_gep_shared(_AS_PTR(void, AllocationKind::SHARED) P, uint64_t Offset,
+                    int64_t SourceId) {
+  return AllocationTracker<AllocationKind::SHARED>::advance(P, Offset,
+                                                            SourceId);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] void *
 ompx_gep(void *P, uint64_t Offset, int64_t SourceId) {
-  bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, /*PC=*/0);
-  if (IsGlobal)
+  auto PtrKind = getFakePtrType(P, SourceId, 0);
+  switch (PtrKind) {
+  case AllocationKind::GLOBAL:
     return (void *)ompx_gep_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
                                    Offset, SourceId);
-  return (void *)ompx_gep_local((_AS_PTR(void, AllocationKind::LOCAL))P, Offset,
-                                SourceId);
+  case AllocationKind::LOCAL:
+    return (void *)ompx_gep_local((_AS_PTR(void, AllocationKind::LOCAL))P,
+                                  Offset, SourceId);
+  case AllocationKind::SHARED:
+    return (void *)ompx_gep_shared((_AS_PTR(void, AllocationKind::SHARED))P,
+                                   Offset, SourceId);
+  }
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
@@ -340,16 +395,28 @@ ompx_gep(void *P, uint64_t Offset, int64_t SourceId) {
                                                           SourceId, PC);
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::SHARED)
+    ompx_check_shared(_AS_PTR(void, AllocationKind::SHARED) P, uint64_t Size,
+                      uint64_t AccessId, int64_t SourceId, uint64_t PC) {
+  return AllocationTracker<AllocationKind::SHARED>::check(P, Size, AccessId,
+                                                          SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] void *
 ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
            uint64_t PC) {
-  bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, PC);
-  if (IsGlobal)
+  auto PtrKind = getFakePtrType(P, SourceId, PC);
+  switch (PtrKind) {
+  case AllocationKind::GLOBAL:
     return (void *)ompx_check_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
                                      Size, AccessId, SourceId, PC);
-  return (void *)ompx_check_local((_AS_PTR(void, AllocationKind::LOCAL))P, Size,
-                                  AccessId, SourceId, PC);
+  case AllocationKind::LOCAL:
+    return (void *)ompx_check_local((_AS_PTR(void, AllocationKind::LOCAL))P,
+                                    Size, AccessId, SourceId, PC);
+  case AllocationKind::SHARED:
+    return (void *)ompx_check_shared((_AS_PTR(void, AllocationKind::SHARED))P,
+                                     Size, AccessId, SourceId, PC);
+  }
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
@@ -375,6 +442,17 @@ ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::SHARED)
+    ompx_check_with_base_shared(_AS_PTR(void, AllocationKind::SHARED) P,
+                                _AS_PTR(void, AllocationKind::SHARED) Start,
+                                uint64_t Length, uint32_t Tag, uint64_t Size,
+                                uint64_t AccessId, int64_t SourceId,
+                                uint64_t PC) {
+  return AllocationTracker<AllocationKind::SHARED>::checkWithBase(
+      P, Start, Length, Tag, Size, AccessId, SourceId, PC);
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::LOCAL)
     ompx_unpack_local(_AS_PTR(void, AllocationKind::LOCAL) P,
                       int64_t SourceId) {
@@ -389,15 +467,28 @@ ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
                                                            /*PC=*/0);
 }
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::SHARED)
+    ompx_unpack_shared(_AS_PTR(void, AllocationKind::SHARED) P,
+                       int64_t SourceId) {
+  return AllocationTracker<AllocationKind::SHARED>::unpack(P, SourceId,
+                                                           /*PC=*/0);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] void *
 ompx_unpack(void *P, int64_t SourceId) {
-  bool IsGlobal = IS_GLOBAL(P);
-  checkForMagic(IsGlobal, P, SourceId, /*PC=*/0);
-  if (IsGlobal)
+  printf("UNPACK GENERIC %p\n", P);
+  auto PtrKind = getFakePtrType(P, SourceId, 0);
+  switch (PtrKind) {
+  case AllocationKind::GLOBAL:
     return (void *)ompx_unpack_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
                                       SourceId);
-  return (void *)ompx_unpack_local((_AS_PTR(void, AllocationKind::LOCAL))P,
-                                   SourceId);
+  case AllocationKind::LOCAL:
+    return (void *)ompx_unpack_local((_AS_PTR(void, AllocationKind::LOCAL))P,
+                                     SourceId);
+  case AllocationKind::SHARED:
+    return (void *)ompx_unpack_shared((_AS_PTR(void, AllocationKind::SHARED))P,
+                                      SourceId);
+  }
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
@@ -420,6 +511,11 @@ ompx_get_allocation_info_local(_AS_PTR(void, AllocationKind::LOCAL) P) {
   gnu::used, gnu::retain]] struct AllocationInfoGlobalTy
 ompx_get_allocation_info_global(_AS_PTR(void, AllocationKind::GLOBAL) P) {
   return AllocationTracker<AllocationKind::GLOBAL>::getAllocationInfo(P);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] struct AllocationInfoSharedTy
+ompx_get_allocation_info_shared(_AS_PTR(void, AllocationKind::SHARED) P) {
+  return AllocationTracker<AllocationKind::SHARED>::getAllocationInfo(P);
 }
 
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
