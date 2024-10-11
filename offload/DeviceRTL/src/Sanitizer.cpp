@@ -181,6 +181,27 @@ template <AllocationKind AK> struct AllocationTracker {
     return utils::advancePtr(Start, Offset);
   }
 
+  [[clang::disable_sanitizer_instrumentation]] static void
+  checkWithBaseVoid(_AS_PTR(void, AK) P, _AS_PTR(void, AK) Start,
+                    int64_t Length, uint32_t Tag, int64_t Size,
+                    int64_t AccessId, int64_t SourceId, uint64_t PC) {
+    AllocationPtrTy<AK> AP = AllocationPtrTy<AK>::get(P);
+    if constexpr (AK == AllocationKind::LOCAL)
+      if (Length == 0)
+        Length = getAllocation<AK>(AP, AccessId, PC).Length;
+    if constexpr (AK == AllocationKind::GLOBAL)
+      if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+        __sanitizer_trap_info_ptr->garbagePointer<AK>(AP, (void *)P, SourceId,
+                                                      PC);
+    int64_t Offset = AP.Offset;
+    if (OMP_UNLIKELY(
+            Offset > Length - Size ||
+            (SanitizerConfig<AK>::useTags() && Tag != AP.AllocationTag))) {
+      __sanitizer_trap_info_ptr->accessError<AK>(AP, Size, AccessId, SourceId,
+                                                 PC);
+    }
+  }
+
   [[clang::disable_sanitizer_instrumentation]] static _AS_PTR(void, AK)
       check(_AS_PTR(void, AK) P, int64_t Size, int64_t AccessId,
             int64_t SourceId, uint64_t PC) {
@@ -188,6 +209,67 @@ template <AllocationKind AK> struct AllocationTracker {
     auto &Alloc = getAllocation<AK>(AP, AccessId, PC);
     return checkWithBase(P, Alloc.Start, Alloc.Length, Alloc.Tag, Size,
                          AccessId, SourceId, PC);
+  }
+
+  [[clang::disable_sanitizer_instrumentation]] static void
+  checkRangeWithBase(_AS_PTR(void, AK) SCEVMax, _AS_PTR(void, AK) SCEVMin,
+                     _AS_PTR(void, AK) StartAddress, int64_t AllocationLength,
+                     uint32_t Tag, int64_t AccessTypeSize, int64_t AccessId,
+                     int64_t SourceId, uint64_t PC) {
+    // printf("Hello World!\n");
+    AllocationPtrTy<AK> APSCEVMax = AllocationPtrTy<AK>::get(SCEVMax);
+    AllocationPtrTy<AK> APSCEVMin = AllocationPtrTy<AK>::get(SCEVMin);
+    if constexpr (AK == AllocationKind::LOCAL)
+      if (AllocationLength == 0)
+        AllocationLength = getAllocation<AK>(APSCEVMax, AccessId, PC).Length;
+
+    if constexpr (AK == AllocationKind::GLOBAL) {
+      if (APSCEVMax.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+        __sanitizer_trap_info_ptr->garbagePointer<AK>(
+            APSCEVMax, (void *)SCEVMax, SourceId, PC);
+
+      if (APSCEVMin.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+        __sanitizer_trap_info_ptr->garbagePointer<AK>(
+            APSCEVMin, (void *)SCEVMin, SourceId, PC);
+    }
+
+    // check upper bound
+    int64_t MaxOffset = APSCEVMax.Offset;
+    if (OMP_UNLIKELY(MaxOffset > AllocationLength - AccessTypeSize ||
+                     (SanitizerConfig<AK>::useTags() &&
+                      Tag != APSCEVMax.AllocationTag))) {
+      __sanitizer_trap_info_ptr->accessError<AK>(APSCEVMax, AccessTypeSize,
+                                                 AccessId, SourceId, PC);
+    }
+
+    // check lower bound
+    auto &AllocationOfMinOffset = getAllocation<AK>(APSCEVMin, AccessId, PC);
+    if (OMP_UNLIKELY(AllocationOfMinOffset.Start != StartAddress ||
+                     (SanitizerConfig<AK>::useTags() &&
+                      Tag != APSCEVMin.AllocationTag))) {
+      __sanitizer_trap_info_ptr->accessError<AK>(APSCEVMin, AccessTypeSize,
+                                                 AccessId, SourceId, PC);
+    }
+  }
+
+  [[clang::disable_sanitizer_instrumentation]] static void
+  checkRange(_AS_PTR(void, AK) SCEVMax, _AS_PTR(void, AK) SCEVMin,
+             int64_t AccessTypeSize, int64_t AccessId, int64_t SourceId,
+             uint64_t PC) {
+    AllocationPtrTy<AK> AP = AllocationPtrTy<AK>::get(SCEVMax);
+    auto &Alloc = getAllocation<AK>(AP, AccessId, PC);
+    return checkRangeWithBase(SCEVMax, SCEVMin, Alloc.Start, Alloc.Length,
+                              Alloc.Tag, AccessTypeSize, AccessId, SourceId,
+                              PC);
+  }
+
+  [[clang::disable_sanitizer_instrumentation]] static void
+  checkVoid(_AS_PTR(void, AK) P, int64_t Size, int64_t AccessId,
+            int64_t SourceId, uint64_t PC) {
+    AllocationPtrTy<AK> AP = AllocationPtrTy<AK>::get(P);
+    auto &Alloc = getAllocation<AK>(AP, AccessId, PC);
+    return checkWithBaseVoid(P, Alloc.Start, Alloc.Length, Alloc.Tag, Size,
+                             AccessId, SourceId, PC);
   }
 
   [[clang::disable_sanitizer_instrumentation]] static _AS_PTR(void, AK)
@@ -253,6 +335,21 @@ getFakePtrType(void *P, int64_t SourceId, uint64_t PC) {
   // Couldn't determine type
   __sanitizer_trap_info_ptr->garbagePointer<AllocationKind::LOCAL>(
       AllocationPtrTy<AllocationKind::LOCAL>::get(P), P, SourceId, PC);
+}
+
+static void checkForMagic2(bool IsGlobal, void *P, int64_t SourceId,
+                           int64_t AccessId, uint64_t PC) {
+  if (IsGlobal) {
+    auto AP = AllocationPtrTy<AllocationKind::GLOBAL>::get(P);
+    if (AP.Magic != SanitizerConfig<AllocationKind::GLOBAL>::MAGIC)
+      __sanitizer_trap_info_ptr->garbagePointer2<AllocationKind::GLOBAL>(
+          AP, P, SourceId, AccessId, PC);
+  } else {
+    auto AP = AllocationPtrTy<AllocationKind::LOCAL>::get(P);
+    if (AP.Magic != SanitizerConfig<AllocationKind::LOCAL>::MAGIC)
+      __sanitizer_trap_info_ptr->garbagePointer2<AllocationKind::LOCAL>(
+          AP, P, SourceId, AccessId, PC);
+  }
 }
 
 extern "C" {
