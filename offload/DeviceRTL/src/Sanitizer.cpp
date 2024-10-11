@@ -452,6 +452,127 @@ ompx_check(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
       P, Start, Length, Tag, Size, AccessId, SourceId, PC);
 }
 
+// Void functions for sanitizing a pointer from base offset and without it
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_void_local(_AS_PTR(void, AllocationKind::LOCAL) P, uint64_t Size,
+                      uint64_t AccessId, int64_t SourceId, uint64_t PC) {
+  return AllocationTracker<AllocationKind::LOCAL>::checkVoid(P, Size, AccessId,
+                                                             SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_void_global(_AS_PTR(void, AllocationKind::GLOBAL) P, uint64_t Size,
+                       uint64_t AccessId, int64_t SourceId, uint64_t PC) {
+  return AllocationTracker<AllocationKind::GLOBAL>::checkVoid(P, Size, AccessId,
+                                                              SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_void(void *P, uint64_t Size, uint64_t AccessId, int64_t SourceId,
+                uint64_t PC) {
+  bool IsGlobal = IS_GLOBAL(P);
+  checkForMagic2(IsGlobal, P, SourceId, AccessId, PC);
+  if (IsGlobal)
+    return ompx_check_void_global((_AS_PTR(void, AllocationKind::GLOBAL))P,
+                                  Size, AccessId, SourceId, PC);
+  return ompx_check_void_local((_AS_PTR(void, AllocationKind::LOCAL))P, Size,
+                               AccessId, SourceId, PC);
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_with_base_void_local(_AS_PTR(void, AllocationKind::LOCAL) P,
+                                _AS_PTR(void, AllocationKind::LOCAL) Start,
+                                uint64_t Length, uint32_t Tag, uint64_t Size,
+                                uint64_t AccessId, int64_t SourceId,
+                                uint64_t PC) {
+  return AllocationTracker<AllocationKind::LOCAL>::checkWithBaseVoid(
+      P, Start, Length, Tag, Size, AccessId, SourceId, PC);
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_with_base_void_global(_AS_PTR(void, AllocationKind::GLOBAL) P,
+                                 _AS_PTR(void, AllocationKind::GLOBAL) Start,
+                                 uint64_t Length, uint32_t Tag, uint64_t Size,
+                                 uint64_t AccessId, int64_t SourceId,
+                                 uint64_t PC) {
+  // printf("Hello World!\n");
+  return AllocationTracker<AllocationKind::GLOBAL>::checkWithBaseVoid(
+      P, Start, Length, Tag, Size, AccessId, SourceId, PC);
+}
+// End of void functions.
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_range_with_base_global(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
+                                  _AS_PTR(void, AllocationKind::GLOBAL) SCEVMin,
+                                  _AS_PTR(void, AllocationKind::GLOBAL)
+                                      StartAddress,
+                                  int64_t AllocationLength, uint32_t Tag,
+                                  int64_t AccessTypeSize, int64_t AccessId,
+                                  int64_t SourceId, uint64_t PC) {
+
+  // printf("Hello World!\n");
+
+  return AllocationTracker<AllocationKind::GLOBAL>::checkRangeWithBase(
+      SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
+      AccessId, SourceId, PC);
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_range_with_base_local(_AS_PTR(void, AllocationKind::LOCAL) SCEVMax,
+                                 _AS_PTR(void, AllocationKind::LOCAL) SCEVMin,
+                                 _AS_PTR(void, AllocationKind::LOCAL)
+                                     StartAddress,
+                                 int64_t AllocationLength, uint32_t Tag,
+                                 int64_t AccessTypeSize, int64_t AccessId,
+                                 int64_t SourceId, uint64_t PC) {
+  // printf("Hello World!\n");
+  return AllocationTracker<AllocationKind::LOCAL>::checkRangeWithBase(
+      SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
+      AccessId, SourceId, PC);
+}
+
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_range_local(_AS_PTR(void, AllocationKind::LOCAL) SCEVMax,
+                       _AS_PTR(void, AllocationKind::LOCAL) SCEVMin,
+                       int64_t AccessTypeSize, int64_t AccessId,
+                       int64_t SourceId, uint64_t PC) {
+  return AllocationTracker<AllocationKind::LOCAL>::checkRange(
+      SCEVMax, SCEVMin, AccessTypeSize, AccessId, SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_range_global(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
+                        _AS_PTR(void, AllocationKind::GLOBAL) SCEVMin,
+                        int64_t AccessTypeSize, int64_t AccessId,
+                        int64_t SourceId, uint64_t PC) {
+  return AllocationTracker<AllocationKind::GLOBAL>::checkRange(
+      SCEVMax, SCEVMin, AccessTypeSize, AccessId, SourceId, PC);
+}
+[[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
+  gnu::used, gnu::retain]] void
+ompx_check_range(void *SCEVMax, void *SCEVMin, int64_t AccessTypeSize,
+                 int64_t AccessId, int64_t SourceId, uint64_t PC) {
+  bool IsGlobalMax = IS_GLOBAL(SCEVMax);
+  bool IsGlobalMin = IS_GLOBAL(SCEVMin);
+  checkForMagic2(IsGlobalMax, SCEVMax, SourceId, AccessId, PC);
+  checkForMagic2(IsGlobalMin, SCEVMin, SourceId, AccessId, PC);
+  if (IsGlobalMax && IsGlobalMin)
+    return ompx_check_range_global(
+        (_AS_PTR(void, AllocationKind::GLOBAL))SCEVMax,
+        (_AS_PTR(void, AllocationKind::GLOBAL))SCEVMin, AccessTypeSize,
+        AccessId, SourceId, PC);
+
+  return ompx_check_range_local((_AS_PTR(void, AllocationKind::LOCAL))SCEVMax,
+                                (_AS_PTR(void, AllocationKind::LOCAL))SCEVMin,
+                                AccessTypeSize, AccessId, SourceId, PC);
+}
+
 [[clang::disable_sanitizer_instrumentation, gnu::flatten, gnu::always_inline,
   gnu::used, gnu::retain]] _AS_PTR(void, AllocationKind::LOCAL)
     ompx_unpack_local(_AS_PTR(void, AllocationKind::LOCAL) P,
