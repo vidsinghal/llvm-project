@@ -498,7 +498,6 @@ ompx_check_with_base_void_global(_AS_PTR(void, AllocationKind::GLOBAL) P,
                                  uint64_t Length, uint32_t Tag, uint64_t Size,
                                  uint64_t AccessId, int64_t SourceId,
                                  uint64_t PC) {
-  // printf("Hello World!\n");
   return AllocationTracker<AllocationKind::GLOBAL>::checkWithBaseVoid(
       P, Start, Length, Tag, Size, AccessId, SourceId, PC);
 }
@@ -513,9 +512,6 @@ ompx_check_range_with_base_global(_AS_PTR(void, AllocationKind::GLOBAL) SCEVMax,
                                   int64_t AllocationLength, uint32_t Tag,
                                   int64_t AccessTypeSize, int64_t AccessId,
                                   int64_t SourceId, uint64_t PC) {
-
-  // printf("Hello World!\n");
-
   return AllocationTracker<AllocationKind::GLOBAL>::checkRangeWithBase(
       SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
       AccessId, SourceId, PC);
@@ -530,7 +526,6 @@ ompx_check_range_with_base_local(_AS_PTR(void, AllocationKind::LOCAL) SCEVMax,
                                  int64_t AllocationLength, uint32_t Tag,
                                  int64_t AccessTypeSize, int64_t AccessId,
                                  int64_t SourceId, uint64_t PC) {
-  // printf("Hello World!\n");
   return AllocationTracker<AllocationKind::LOCAL>::checkRangeWithBase(
       SCEVMax, SCEVMin, StartAddress, AllocationLength, Tag, AccessTypeSize,
       AccessId, SourceId, PC);
